@@ -13,6 +13,10 @@ async function status() {
   $("login").hidden = true;
   $("dashboard").hidden = false;
   $("connection").textContent = s.connected ? "Connected" : "Not connected";
+  const preferences = await api("/admin/preferences");
+  $("history-enabled").checked = preferences.history_enabled;
+  $("battery-threshold").value = preferences.battery_change_percentage;
+  $("temperature-threshold").value = preferences.temperature_change_c;
   const pairs = {
     "API credentials": s.configured ? "Configured" : "Missing",
     "Partner registration": s.partner?.verified ? "Verified" : "Unverified",
@@ -58,7 +62,10 @@ $("discover").onclick = async () => {
       o.textContent = (v.display_name || "Tesla") + " · " + v.state;
       $("vehicles").append(o);
     }
-    if (!result.vehicles.length) message("No authorized vehicles found.");
+    if (!result.vehicles.length)
+      message(
+        "Tesla returned no vehicles. Connect the Tesla account that shows your car in the Tesla mobile app, then grant vehicle access.",
+      );
   } catch (e) {
     message(e);
   }
@@ -80,7 +87,15 @@ $("refresh").onclick = async () => {
   const b = $("refresh");
   b.disabled = true;
   try {
-    const d = await api("/api/vehicle/summary");
+    const context = await api("/api/vehicle/context");
+    const d = context.observation;
+    $("context").textContent = context.narrative;
+    $("changes").replaceChildren();
+    for (const change of context.changes) {
+      const item = document.createElement("li");
+      item.textContent = change.message;
+      $("changes").append(item);
+    }
     $("battery").textContent =
       d.battery.percentage == null ? "Unavailable" : d.battery.percentage + "%";
     $("range").textContent =
@@ -120,6 +135,23 @@ $("disconnect").onclick = async () => {
     message(e);
   }
 };
+$("preferences-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    await api("/admin/preferences", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        history_enabled: $("history-enabled").checked,
+        battery_change_percentage: Number($("battery-threshold").value),
+        temperature_change_c: Number($("temperature-threshold").value),
+      }),
+    });
+    message("Preferences saved.");
+  } catch (error) {
+    message(error);
+  }
+});
 status().catch((e) => {
   if (e.message !== "unauthorized") message(e);
 });

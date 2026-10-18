@@ -1,13 +1,14 @@
 import { z } from "zod";
 import { AppError } from "../types";
+import { freshness } from "../context/observations";
 const n = z.number().finite().nullable().optional(),
   b = z.boolean().nullable().optional(),
   s = z.string().nullable().optional();
 export const dataSchema = z.object({
   charge_state: z
     .object({
-      battery_level: n,
-      battery_range: n,
+      battery_level: z.number().min(0).max(100).nullable().optional(),
+      battery_range: z.number().nonnegative().nullable().optional(),
       charging_state: s,
       charger_power: n,
       charge_limit_soc: n,
@@ -54,6 +55,19 @@ export function normalize(
       typeof x === "number" && x > 0 && x <= Date.now() + 60000,
   );
   const timestamp = dates.length ? Math.min(...dates) : null;
+  const sectionTime = (time: number | null | undefined) =>
+    freshness(
+      typeof time === "number" && time > 0 && time <= Date.now() + 60000
+        ? new Date(time).toISOString()
+        : null,
+    );
+  const sections = {
+    battery: sectionTime(c?.timestamp),
+    charging: sectionTime(c?.timestamp),
+    climate: sectionTime(a?.timestamp),
+    vehicle: sectionTime(v?.timestamp),
+    ...(location ? { location: sectionTime(l?.timestamp) } : {}),
+  };
   return {
     vehicle: {
       id,
@@ -73,7 +87,7 @@ export function normalize(
       charging:
         c?.charging_state == null ? null : c.charging_state === "Charging",
       connected:
-        c?.charging_state == null
+        c?.charging_state == null || c.charging_state === "Unknown"
           ? null
           : !["Disconnected", "Unknown"].includes(c.charging_state),
       power_kw: c?.charger_power ?? null,
@@ -90,18 +104,23 @@ export function normalize(
           location: {
             latitude: l?.latitude ?? null,
             longitude: l?.longitude ?? null,
-            observed_at: l?.timestamp
-              ? new Date(l.timestamp).toISOString()
-              : null,
+            observed_at: sections.location?.observed_at ?? null,
           },
         }
       : {}),
     data: {
       observed_at: timestamp ? new Date(timestamp).toISOString() : null,
       retrieved_at: new Date().toISOString(),
-      is_stale: timestamp === null || Date.now() - timestamp > 300000,
+      is_stale:
+        timestamp === null ||
+        Date.now() - timestamp > 300000 ||
+        (c !== undefined && sections.battery.is_stale) ||
+        (a !== undefined && sections.climate.is_stale) ||
+        (v !== undefined && sections.vehicle.is_stale) ||
+        (location && sections.location!.is_stale),
       source: "tesla_fleet_api",
-      already_awake: true,
+      sections,
+      already_awake: true as boolean | null,
       may_incur_api_charges: true,
       unavailable_fields_are_null: true,
     },
