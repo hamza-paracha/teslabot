@@ -217,7 +217,10 @@ export function estimateTrip(
     distance_km: input.distance_km,
     reserve_percentage: input.reserve_percentage,
     estimated_arrival_percentage:
-      arrival === null ? null : Math.round(Math.max(0, arrival) * 10) / 10,
+      arrival === null || arrival < 0 ? null : Math.round(arrival * 10) / 10,
+    reported_range_shortfall_km: usable
+      ? Math.round(Math.max(0, input.distance_km - range!) * 10) / 10
+      : null,
     assumptions: [
       "Distance is supplied by the caller and must include every leg of the trip.",
       "Uses Tesla's reported range with a linear battery-to-distance estimate; it does not use recorded driving efficiency.",

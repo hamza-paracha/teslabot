@@ -34,6 +34,8 @@ Let me ask about battery, estimated range, charging, climate, location, and vehi
 
 For example: **“Can I make it to my meeting and back?”** The agent could compare current battery with trip distance and, if available and authorized, the car's recorded efficiency. It should state assumptions and uncertainty, then offer a useful next step such as checking nearby charging. It must not imply route, traffic, trip-history, or charger data is available unless a connected service actually provides it.
 
+For a supplied destination, resolve the driving route through the host's authorized maps tool, then report estimated battery at arrival and after returning to the confirmed origin. Assess each against a reserve threshold. If only the outbound distance is available, explicitly label the return distance as an equal-distance assumption. Do not invent distances, claim reachability from stale readings, or assume charging at the destination.
+
 ### 3. Notice meaningful changes
 
 Compare observations over time and point out changes the user may care about. For example: **“You usually charge overnight; charging didn't start last night.”** Start with simple, transparent comparisons. Let the user choose what counts as noteworthy, and avoid noisy or speculative alerts.
@@ -74,7 +76,8 @@ Eventually, the agent might offer: **“It's cold. Want me to warm the cabin to 
 - User-configurable battery and cabin-temperature change thresholds.
 - Optional encrypted history: up to 48 observations within a seven-day window, collected only on requested live reads. Expired samples are removed on the next history read or write; no background job is enabled. Cloud backups can retain older ciphertext.
 - Trip estimation from a caller-supplied total distance, Tesla's reported range and a configurable battery reserve. Stale or incomplete battery data produces an insufficient-data result.
-- Twelve read-only MCP tools, including context, changes, history and trip estimation.
+- Destination assessment with separate arrival and round-trip percentages, an explicit origin and host-supplied driving distances. It supports asymmetric return routes and labels equal-distance assumptions. Trips beyond reported range receive no fabricated arrival percentage.
+- Thirteen read-only MCP tools, including context, changes, history and trip estimation.
 - A provider-independent departure planner using calendar, travel and forecast inputs supplied by the host; it never polls Tesla or stores calendar inputs in the backend.
 - A portable local plugin manifest, proactive workflow skill and bundled MCP runtime build. The built runtime has been started by a real stdio client, discovered 12 tools and invoked departure planning against the deployed backend with no calendar inputs; no vehicle observation was available. This is transport verification, not a live calendar-driven trip or notification.
 - A private local MCP configuration file containing only the backend origin and read-only credential.
