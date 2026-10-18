@@ -21,6 +21,12 @@ When the user requests a check, or an opted-in host schedule fires:
 
 Useful wording: “You have an event tomorrow morning. The forecast at departure is cold. Want to review warming the cabin before you leave?” Include the actual departure time only when travel duration is known. If driving intent is unclear, ask whether the user plans to take the Tesla.
 
+## Destination questions
+
+When the user gives a place and asks whether the car can make it, confirm the origin and resolve ambiguous destinations. Use the host's authorized driving-route tool to obtain the outbound distance and, ideally, a separate return route. Do not use straight-line distance. Ask for the starting city/location if it is unavailable; do not share precise Tesla coordinates with another service without permission.
+
+Call `tesla_assess_destination` with the destination label, confirmed origin, route source and outbound/return distances. It may fetch authorized Tesla data, so normal usage charges can apply. Present the one-way arrival estimate and the percentage after returning separately, together with the selected reserve. Report whether the return distance was assumed and whether the battery reading is fresh. Assume no charging between legs unless a separately assessed plan says otherwise. Missing or stale data cannot support a confident yes. Do not claim an arrival percentage for a route beyond the reported range.
+
 ## Actions and permissions
 
 This version offers suggestions only. It cannot turn on heating, create a future vehicle command, send a destination to the car or execute any other command. Say so when proposing those future capabilities. A user's reply does not enable an unimplemented capability.

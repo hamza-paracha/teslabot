@@ -1,7 +1,7 @@
 import { it, expect, vi } from "vitest";
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { createServer } from "../mcp/src/server";
-it("lists twelve read-only tools and invokes battery over MCP with a mocked backend", async () => {
+it("lists thirteen read-only tools and invokes battery over MCP with a mocked backend", async () => {
   const backend = vi.fn(async (_url: any, _options?: RequestInit) =>
     Response.json({
       vehicle: { id: "opaque" },
@@ -26,7 +26,7 @@ it("lists twelve read-only tools and invokes battery over MCP with a mocked back
   await client.connect(b);
   try {
     const tools = await client.listTools();
-    expect(tools.tools).toHaveLength(12);
+    expect(tools.tools).toHaveLength(13);
     expect(tools.tools.every((t) => t.annotations?.readOnlyHint)).toBe(true);
     const result = await client.callTool({
       name: "tesla_get_battery",
@@ -115,6 +115,35 @@ it("plans cold-weather offers through MCP even when cached vehicle data is unava
       "https://tesla.example.com/api/vehicle/cached",
       expect.anything(),
     );
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+it("requests a host route for a place name without contacting Tesla", async () => {
+  const backend = vi.fn();
+  const server = createServer(
+    "https://tesla.example.com",
+    "m".repeat(64),
+    backend,
+  );
+  const client = new Client({ name: "test", version: "1.0.0" });
+  const [a, b] = InMemoryTransport.createLinkedPair();
+  await server.connect(a);
+  await client.connect(b);
+  try {
+    const result = await client.callTool({
+      name: "tesla_assess_destination",
+      arguments: { destination: "Airport" },
+    });
+    expect(result.structuredContent).toMatchObject({
+      assessment: "route_required",
+      destination: "Airport",
+      one_way: null,
+      round_trip: null,
+    });
+    expect(backend).not.toHaveBeenCalled();
   } finally {
     await client.close();
     await server.close();

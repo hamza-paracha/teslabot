@@ -1,5 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import {
+  assessDestination,
+  destinationSchema,
+} from "../../src/context/destination";
 import { departureSchema, planDepartures } from "../../src/context/departure";
 import type { Observation } from "../../src/context/observations";
 import { tripSchema } from "../../src/context/observations";
@@ -140,6 +144,34 @@ export function createServer(
               ?.code ?? "backend_unavailable")
           : null,
       };
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(result) }],
+        structuredContent: result,
+      };
+    },
+  );
+  server.registerTool(
+    "tesla_assess_destination",
+    {
+      description:
+        "For 'Can I make it to this location and back?', estimate battery on arrival and after a round trip. The host first resolves the place and driving route with its authorized maps tool from a confirmed origin; never invent distance from a place name or use straight-line distance. If return distance is missing, the equal-distance assumption is disclosed. Uses a fresh/cached Tesla summary and may incur API charges; never wakes the car or sends destinations to Tesla.",
+      inputSchema: destinationSchema,
+      annotations,
+    },
+    async (input) => {
+      if (!input.origin || !input.route) {
+        const result = assessDestination(input, null);
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result) }],
+          structuredContent: result,
+        };
+      }
+      const response = await read("/api/vehicle/summary");
+      if (response.isError) return response;
+      const result = assessDestination(
+        input,
+        response.structuredContent as unknown as Observation,
+      );
       return {
         content: [{ type: "text" as const, text: JSON.stringify(result) }],
         structuredContent: result,
