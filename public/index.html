@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>EVIntelligence</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/dashboard.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <a href="/" class="brand">EV<span>Intelligence</span></a
+      ><span class="badge">PERSONAL / READ ONLY</span>
+    </header>
+    <main>
+      <div class="intro">
+        <p class="eyebrow">YOUR VEHICLE, IN CONTEXT</p>
+        <h1>A quieter kind<br />of intelligence.</h1>
+        <p>Secure access to your Tesla. On your terms.</p>
+      </div>
+      <section id="login">
+        <h2>Administrator access</h2>
+        <p>
+          Enter your local administrator credential to open a secure one-hour
+          session.
+        </p>
+        <form id="login-form">
+          <label for="credential">Administrator credential</label
+          ><input
+            id="credential"
+            type="password"
+            autocomplete="off"
+            required
+          /><button>Open dashboard</button>
+        </form>
+      </section>
+      <div id="dashboard" hidden>
+        <section>
+          <div class="section-title">
+            <h2>Connection</h2>
+            <span id="connection">Not connected</span>
+          </div>
+          <dl id="setup"></dl>
+          <div class="actions">
+            <a class="button" href="/auth/login">Connect Tesla Account</a
+            ><button id="refresh">Refresh Vehicle Data</button
+            ><button id="disconnect" class="secondary">
+              Disconnect Tesla Account
+            </button>
+          </div>
+          <p class="hint">
+            Refresh may incur Tesla API charges. Sleeping vehicles are never
+            woken.
+          </p>
+        </section>
+        <section>
+          <h2>Your vehicle</h2>
+          <label for="vehicles">Select an authorized vehicle</label
+          ><select id="vehicles">
+            <option value="">Load authorized vehicles first</option></select
+          ><button id="discover" class="secondary">Load vehicles</button
+          ><button id="select" class="secondary">Select vehicle</button>
+          <div class="metrics">
+            <article>
+              <h3>Battery</h3>
+              <strong id="battery">—</strong>
+            </article>
+            <article>
+              <h3>Estimated range</h3>
+              <strong id="range">—</strong>
+            </article>
+            <article>
+              <h3>Charging</h3>
+              <strong id="charging">—</strong>
+            </article>
+            <article>
+              <h3>Cabin / outside</h3>
+              <strong id="climate">—</strong>
+            </article>
+          </div>
+          <p id="freshness">No vehicle data has been retrieved.</p>
+          <details>
+            <summary>Read-only observation</summary>
+            <pre id="observation"></pre>
+          </details>
+        </section>
+      </div>
+      <p id="message" role="status" aria-live="polite"></p>
+    </main>
+    <footer>
+      EVIntelligence
+      <span>Independent personal integration · Official Tesla Fleet API</span>
+    </footer>
+  </body>
+</html>

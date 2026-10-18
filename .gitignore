@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars*
+.env*
+!.env.example
+secrets/
+*.private.pem
+private-key.pem
+*tokens*.json
+*.log
+coverage/
+.DS_Store
+
+# Operator-specific deployment configuration and generated public key
+wrangler.jsonc
+public/.well-known/appspecific/com.tesla.3p.public-key.pem

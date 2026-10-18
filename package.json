@@ -1,0 +1,38 @@
+{
+  "name": "evintelligence",
+  "version": "1.0.0",
+  "description": "Personal read-only Tesla Fleet API integration",
+  "scripts": {
+    "dev": "wrangler dev",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "keys": "bash scripts/generate-keys.sh",
+    "mcp": "tsx mcp/src/index.ts",
+    "smoke": "tsx scripts/smoke-test.ts",
+    "partner": "tsx scripts/register-partner.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run format:check && npm run typecheck && npm test && npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "^2.3.1",
+    "@modelcontextprotocol/server": "^2.3.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261018.1",
+    "@types/node": "^26.6.5",
+    "miniflare": "^5.20261012.1-beta",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5",
+    "wrangler": "^4.151.1"
+  },
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  }
+}

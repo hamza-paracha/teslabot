@@ -1,0 +1,9 @@
+node_modules
+dist
+.wrangler
+secrets
+.dev.vars*
+.env*
+wrangler.jsonc
+package-lock.json
+public/.well-known
