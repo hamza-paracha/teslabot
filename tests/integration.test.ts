@@ -729,3 +729,26 @@ describe("personal context and history routes", () => {
     expect(f).not.toHaveBeenCalled();
   });
 });
+
+it("serves a cached planning observation without a Tesla call and marks it historical", async () => {
+  const current = normalize(fixture, "opaque", null, false);
+  current.data.observed_at = new Date(Date.now() - 600000).toISOString();
+  await store.put("selected", { id: "opaque", vin });
+  await store.put("summary", current);
+  const f = vi.fn();
+  vi.stubGlobal("fetch", f);
+  const response = await req("/api/vehicle/cached", {
+    headers: { Authorization: "Bearer " + e.MCP_TOKEN },
+  });
+  expect(response.status).toBe(200);
+  const result = (await response.json()) as any;
+  expect(result.data.is_stale).toBe(true);
+  expect(result.data.may_incur_api_charges).toBe(false);
+  expect(result.data.already_awake).toBeNull();
+  expect(f).not.toHaveBeenCalled();
+});
+it("does not expose cached data from a different selected vehicle to the planner", async () => {
+  await store.put("selected", { id: "other", vin });
+  await store.put("summary", normalize(fixture, "opaque", null, false));
+  expect((await req("/api/vehicle/cached")).status).toBe(409);
+});

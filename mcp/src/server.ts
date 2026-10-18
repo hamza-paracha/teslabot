@@ -1,5 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import { departureSchema, planDepartures } from "../../src/context/departure";
+import type { Observation } from "../../src/context/observations";
 import { tripSchema } from "../../src/context/observations";
 
 const endpoints = {
@@ -117,6 +119,32 @@ export function createServer(
             reserve_percentage: String(input.reserve_percentage),
           }),
       ),
+  );
+  server.registerTool(
+    "tesla_plan_departures",
+    {
+      description:
+        "Plan proactive Tesla suggestions from the host agent's authorized calendar, departure-location weather and route tools. Does not connect a calendar, store event data, poll Tesla, send notifications or execute commands. The host supplies timed events and handles opt-in scheduling and deduplication. Uses only cached vehicle data; missing data is explicitly reported.",
+      inputSchema: departureSchema,
+      annotations,
+    },
+    async (input) => {
+      const cached = await read("/api/vehicle/cached");
+      const observation = !cached.isError
+        ? (cached.structuredContent as unknown as Observation)
+        : null;
+      const result = {
+        ...planDepartures(input, observation),
+        vehicle_data_error: cached.isError
+          ? ((cached.structuredContent as { error?: { code: string } }).error
+              ?.code ?? "backend_unavailable")
+          : null,
+      };
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(result) }],
+        structuredContent: result,
+      };
+    },
   );
   return server;
 }

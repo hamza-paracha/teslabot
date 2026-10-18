@@ -14,3 +14,4 @@ jobs:
       - run: npm ci
       - run: cp wrangler.example.jsonc wrangler.jsonc
       - run: npm run check
+      - run: npm run plugin:build
