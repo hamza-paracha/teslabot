@@ -21,6 +21,9 @@ for (const p of [
   "/api/vehicle/battery",
   "/api/vehicle/location",
   "/auth/status",
+  "/api/vehicle/readiness",
+  "/api/vehicle/tires",
+  "/api/vehicle/closures",
 ]) {
   assert.equal((await fetch(u.origin + p, { redirect: "error" })).status, 401);
 }
