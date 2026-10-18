@@ -1,12 +1,18 @@
 # teslabot
 
-A personal Tesla Fleet API backend for AI agents. Runs on Cloudflare Workers with encrypted D1 persistence, a small administrator dashboard, and eleven read-only MCP tools.
+A personal Tesla Fleet API backend for AI agents. Runs on Cloudflare Workers with encrypted D1 persistence, a small administrator dashboard, and twelve read-only MCP tools.
 
 Ask an MCP-compatible agent for battery, charging, climate or vehicle status. Tesla credentials stay in the backend. The agent uses a separate read-only credential.
 
 **Status:** backend, dashboard and local stdio MCP implemented. The original deployment has verified Tesla partner registration. Vehicle-owner OAuth is connected in the original deployment, but its authorized account returned no vehicles. Live battery readings still require the correct account, explicit vehicle selection and end-to-end verification. No remote MCP transport is included. Commands, vehicle wakes and scheduled polling are disabled.
 
 See [goal.md](goal.md) for the product vision, implemented capabilities and remaining work.
+
+## Proactive agent plugin
+
+The host agent uses its existing authorized calendar, routing and weather tools, then calls `tesla_plan_departures`. teslabot proposes preparation based on upcoming trips, forecast temperature and cached car data. The host supplies opt-in scheduling, quiet hours and notification delivery. This version can suggest cabin preconditioning but cannot execute it.
+
+Run `npm run plugin:build` to create a portable local plugin at `dist/teslabot`, containing manifests, a workflow skill and a bundled Node runtime. See [proactive plugin setup](docs/PROACTIVE_PLUGIN.md). The plugin has not been installed in Hermes or hosted ChatGPT.
 
 ## Project layout
 

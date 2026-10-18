@@ -32,6 +32,27 @@ export async function vehicleRoute(
 ): Promise<Response | null> {
   const p = new URL(r.url).pathname;
   const client = new TeslaClient(store);
+  if (p === "/api/vehicle/cached" && r.method === "GET") {
+    return store.locked("vehicle", async () => {
+      const selected = await store.get<{ id: string }>("selected");
+      const current = await store.get<Observation>("summary");
+      if (!selected || !current || current.vehicle.id !== selected.id)
+        throw new AppError("no_cached_observation", 409);
+      const safe = restrictLocation(
+        refreshObservation(current),
+        e.ENABLE_LOCATION === "true",
+      );
+      return json({
+        ...safe,
+        data: {
+          ...safe.data,
+          cache_hit: true,
+          may_incur_api_charges: false,
+          already_awake: null,
+        },
+      });
+    });
+  }
   if (p === "/admin/preferences" && r.method === "GET")
     return json(
       (await store.get<Preferences>("preferences")) ?? defaultPreferences,

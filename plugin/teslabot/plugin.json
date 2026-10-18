@@ -1,0 +1,17 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "teslabot",
+  "version": "0.2.0",
+  "description": "Tesla context and proactive departure suggestions using your agent's existing calendar and weather tools.",
+  "repository": "https://github.com/hamza-paracha/teslabot",
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "teslabot",
+        "shortDescription": "Proactive Tesla context",
+        "longDescription": "Read authorized Tesla data and plan departure suggestions from calendar, weather and route context supplied by your agent. Vehicle commands are disabled.",
+        "capabilities": []
+      }
+    }
+  }
+}

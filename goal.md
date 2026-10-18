@@ -6,6 +6,14 @@ Make teslabot feel like an agent that understands the car, not a dashboard that 
 
 The bigger direction is a personal context layer across the things I use: Tesla, calendar, home, files, and more. I want to ask one agent questions that span those services, while keeping each connection's permissions clear and under my control.
 
+## Proactive host-agent workflow
+
+The host agent (for example Hermes or another compatible client) supplies whichever calendar, routing and weather tools the user already uses. teslabot must not force a particular calendar provider or maintain a duplicate calendar login.
+
+With the user's opt-in host schedule, the agent checks upcoming events, determines whether a trip is intended, obtains an actual travel estimate and checks weather at the departure location. It can say, “You have an event tomorrow morning and the forecast near departure is cold. Would you like to review warming the cabin?”
+
+The host owns scheduling, quiet hours, notification delivery, calendar permission and deduplication. The plugin supplies the workflow skill, a typed departure-planning tool and Tesla data. An MCP server alone is not a continuously running proactive agent. Vehicle command execution is a separate future capability requiring exact, authenticated confirmation and signing support.
+
 ## The first surprising experience
 
 Ask naturally: **“How's the car?”**
@@ -66,7 +74,9 @@ Eventually, the agent might offer: **“It's cold. Want me to warm the cabin to 
 - User-configurable battery and cabin-temperature change thresholds.
 - Optional encrypted history: up to 48 observations within a seven-day window, collected only on requested live reads. Expired samples are removed on the next history read or write; no background job is enabled. Cloud backups can retain older ciphertext.
 - Trip estimation from a caller-supplied total distance, Tesla's reported range and a configurable battery reserve. Stale or incomplete battery data produces an insufficient-data result.
-- Eleven read-only MCP tools, including context, changes, history and trip estimation.
+- Twelve read-only MCP tools, including context, changes, history and trip estimation.
+- A provider-independent departure planner using calendar, travel and forecast inputs supplied by the host; it never polls Tesla or stores calendar inputs in the backend.
+- A portable local plugin manifest, proactive workflow skill and bundled MCP runtime build. The built runtime has been started by a real stdio client, discovered 12 tools and invoked departure planning against the deployed backend with no calendar inputs; no vehicle observation was available. This is transport verification, not a live calendar-driven trip or notification.
 - A private local MCP configuration file containing only the backend origin and read-only credential.
 - A real stdio-client verification command, separate from mocked tests.
 - Updated backend and dashboard deployed to the existing HTTPS subdomain.
@@ -82,7 +92,7 @@ Eventually, the agent might offer: **“It's cold. Want me to warm the cabin to 
 ### Still pending
 
 - Explicit selection of an authorized vehicle and a verified live battery reading through MCP.
-- Calendar, route, traffic, weather, charger availability and recorded driving-efficiency integrations.
+- Host installation and opt-in scheduling/notification setup. Calendar, route and weather inputs now have a typed planning interface, but no host calendar or weather tool has been connected or verified. Charger availability and recorded driving efficiency are still absent.
 - Routine detection such as "charging usually starts overnight"; observations currently support comparisons only.
 - An authenticated remote MCP transport for hosted clients.
 - Any vehicle commands or virtual-key pairing. These remain disabled and require separate authorization and implementation.
