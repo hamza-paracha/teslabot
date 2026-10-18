@@ -19,7 +19,7 @@ if path.exists():
 values.setdefault('TOKEN_ENCRYPTION_KEY',base64.b64encode(secrets.token_bytes(32)).decode())
 values.setdefault('ADMIN_TOKEN',secrets.token_urlsafe(48))
 values.setdefault('MCP_TOKEN',secrets.token_urlsafe(48))
-values.setdefault('APP_ORIGIN',os.environ.get('EVINTELLIGENCE_URL','http://localhost:8787'))
+values.setdefault('APP_ORIGIN',os.environ.get('TESLABOT_URL','http://localhost:8787'))
 if args.local: values['APP_ORIGIN']='http://localhost:8787'
 if args.tesla:
  for key in ['TESLA_CLIENT_ID','TESLA_CLIENT_SECRET']:

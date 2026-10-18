@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { validPublicKey, KEY_PATH, pemBytes } from "../src/tesla/partner";
-const origin = process.env.EVINTELLIGENCE_URL;
-if (!origin) throw Error("Set EVINTELLIGENCE_URL");
+const origin = process.env.TESLABOT_URL;
+if (!origin) throw Error("Set TESLABOT_URL");
 const u = new URL(origin);
 assert.equal(u.protocol, "https:");
 for (const p of ["/health", KEY_PATH]) {
