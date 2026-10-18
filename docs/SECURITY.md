@@ -1,0 +1,19 @@
+# Security review and threat model
+
+Assets: Tesla credentials, owner/partner tokens, location/VIN, administrator sessions, private vehicle key and billing budget. Adversaries include public internet users, malicious websites, compromised MCP clients, prompt-injection content, and an attacker obtaining a database backup.
+
+Controls implemented: static public shell only; protected data/administration; random separate admin/MCP credentials; browser-bound expiring single-use OAuth state; strict origin for browser POST; one-hour opaque secure cookies; no token URLs/localStorage; fixed Tesla regional hosts; credential-bearing redirects rejected; AES-256-GCM encrypted D1 records with authenticated record names; scoped MCP read-only access; bounded HTTP timeouts; serialized rotation and usage reservations; no wake, polling or command implementation; no console logging of upstream errors, credentials or vehicle data. Worker invocation observability is off to reduce OAuth-code query logging. Cloudflare account-level logs/WAF tools must also be reviewed for query-string retention before production.
+
+Private key: generated locally, prime256v1, mode 0600, outside public/ and never imported by the Worker. Only the public PEM is an asset. Preserve this key; don't run keys again to rotate. Encrypt backups offline. No language-model interface can request the private key.
+
+Database backups: use authenticated Cloudflare D1 export/restore and inspect the current recovery retention for the selected plan. Backups contain ciphertext but remain sensitive. Keep the encryption key separately in a password manager/offline encrypted backup; database-only recovery cannot decrypt tokens. Restoring old refresh tokens may require reauthorization because Tesla rotates them. Keep the same D1 database and secret across deployments. Revoke consent if backups or tokens may be compromised. Key rotation requires migration/re-encryption, not replacing the secret blindly.
+
+Environment separation: use separate Worker names, D1 databases, secrets and Tesla registration for staging. Local .dev.vars and .wrangler state are ignored. No remote staging/live database testing. No user secrets in committed files. Production configuration has no workers.dev route or scheduled tasks.
+
+Rate limiting: 60 authenticated HTTP requests/minute globally (appropriate for one administrator); request/spend reservations persist in D1. Cloudflare WAF/Access may be added after account inspection for stronger perimeter/rate controls. If adding Access, the public key must bypass it, and OAuth callback must remain accessible with state validation. Never trust an unsigned Cloudflare Access email header.
+
+Residual limitations: bearer credential theft permits its granted access; use strong generated credentials, restrict local client files and rotate compromised credentials. The shared administrator token is a personal bootstrap mechanism, not multi-user identity/MFA. Tesla token refresh and D1 writes cannot be atomically committed across providers; storage failures can require reauthorization. The 120-second lease assumes bounded requests; overloaded requests can fail and must not be blindly retried. App counters are not invoice guarantees. Each installation requires its own cloud inspection and live OAuth/API verification. No independent penetration test has been performed.
+
+Account disconnection removes local credentials/data and invalidates sessions. It does not promise server-side Tesla token revocation; revoke the grant in Tesla's own account interface. The private key remains securely backed up for future authorized use, and partner registration remains separate.
+
+Security-sensitive future commands require an authenticated confirmation bound to vehicle, exact action/parameters, expiration and single-use challenge. MCP must not have access to approving those confirmations. Never enable commands on the strength of untrusted text.

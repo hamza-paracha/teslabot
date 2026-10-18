@@ -1,0 +1,210 @@
+:root {
+  color-scheme: dark;
+  --ink: #eceee7;
+  --muted: #a5ada3;
+  --lime: #d5ef91;
+  --line: #343d35;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: #17221d;
+  color: var(--ink);
+  font-family: "Avenir Next", Avenir, sans-serif;
+  font-size: 16px;
+}
+header,
+footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 28px 5vw;
+  border-bottom: 1px solid var(--line);
+}
+a {
+  color: inherit;
+}
+a.brand {
+  text-decoration: none;
+  font-size: 23px;
+  font-weight: 700;
+}
+.brand span {
+  font-weight: 400;
+}
+.badge,
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--lime);
+}
+main {
+  max-width: 1100px;
+  margin: auto;
+  padding: 55px 30px 100px;
+}
+.intro {
+  margin-bottom: 60px;
+}
+h1 {
+  font-family: Georgia, serif;
+  font-weight: 400;
+  font-size: clamp(46px, 7vw, 78px);
+  line-height: 1.04;
+  margin: 24px 0;
+}
+p {
+  color: var(--muted);
+  line-height: 1.6;
+}
+section {
+  border-top: 1px solid var(--line);
+  padding: 28px 0 35px;
+}
+h2 {
+  font-size: 19px;
+  font-weight: 500;
+  margin: 0 0 22px;
+}
+.section-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
+button,
+.button {
+  display: inline-block;
+  border: 1px solid var(--lime);
+  background: var(--lime);
+  color: #17221d;
+  padding: 13px 18px;
+  font: inherit;
+  font-size: 14px;
+  text-decoration: none;
+  cursor: pointer;
+  border-radius: 3px;
+}
+button:hover,
+.button:hover {
+  filter: brightness(1.1);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.secondary {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--line);
+}
+label {
+  display: block;
+  font-size: 13px;
+  margin: 15px 0 8px;
+}
+input,
+select {
+  background: #202e25;
+  border: 1px solid #657361;
+  color: var(--ink);
+  padding: 13px;
+  font: inherit;
+  max-width: 100%;
+  margin: 0 12px 12px 0;
+}
+input {
+  width: 360px;
+}
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 24px;
+}
+.hint {
+  font-size: 12px;
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 22px;
+  margin-top: 40px;
+}
+.metrics article {
+  border-left: 1px solid var(--line);
+  padding-left: 16px;
+}
+h3 {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+strong {
+  font-size: 26px;
+  font-weight: 400;
+}
+dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  font-size: 14px;
+}
+dt {
+  color: var(--muted);
+}
+dd {
+  margin: 0;
+  text-align: right;
+}
+pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  color: var(--muted);
+}
+footer {
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+  color: var(--muted);
+  font-size: 12px;
+  gap: 20px;
+}
+#message {
+  color: var(--lime);
+}
+[hidden] {
+  display: none !important;
+}
+:focus-visible {
+  outline: 2px solid white;
+  outline-offset: 4px;
+}
+@media (max-width: 650px) {
+  header {
+    padding: 24px;
+  }
+  .badge {
+    display: none;
+  }
+  main {
+    padding: 30px 24px 60px;
+  }
+  .metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+  .actions {
+    flex-direction: column;
+  }
+  .actions > * {
+    text-align: center;
+  }
+  footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .section-title {
+    display: block;
+  }
+}
