@@ -144,12 +144,14 @@ export async function route(r: Request, e: Env): Promise<Response> {
     await store.locked("vehicle", () =>
       store.locked("account", async () => {
         await e.DB.batch([
-          e.DB.prepare("DELETE FROM records WHERE key IN (?,?,?,?,?)").bind(
+          e.DB.prepare("DELETE FROM records WHERE key IN (?,?,?,?,?,?,?)").bind(
             "owner_tokens",
             "selected",
             "vehicles",
             "summary",
             "previous_summary",
+            "observation_history",
+            "preferences",
           ),
           e.DB.prepare("DELETE FROM oauth_states"),
           e.DB.prepare("DELETE FROM sessions"),

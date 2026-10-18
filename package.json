@@ -13,7 +13,8 @@
     "partner": "tsx scripts/register-partner.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "npm run format:check && npm run typecheck && npm test && npm run build"
+    "check": "npm run format:check && npm run typecheck && npm test && npm run build",
+    "mcp:verify": "tsx scripts/verify-mcp.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.3.1",

@@ -624,3 +624,108 @@ it("rejects malformed registered EC-point encodings", async () => {
     registeredKeyBytes("04" + "00".repeat(64)),
   ).rejects.toMatchObject({ code: "invalid_public_key" });
 });
+
+describe("personal context and history routes", () => {
+  const preferenceBody = {
+    history_enabled: true,
+    battery_change_percentage: 5,
+    temperature_change_c: 3,
+  };
+  const savePreferences = (body = preferenceBody, headers = {}) =>
+    req("/admin/preferences", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+  async function selected() {
+    await store.put("owner_tokens", tokens());
+    await store.put("selected", { id: "opaque", vin });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) =>
+        Response.json({
+          response: String(url).includes("vehicle_data")
+            ? fixture
+            : { vin, state: "online" },
+        }),
+      ),
+    );
+  }
+  it("protects preferences and prevents MCP clients enabling history", async () => {
+    expect((await req("/admin/preferences", {}, false)).status).toBe(401);
+    expect(
+      (
+        await savePreferences(preferenceBody, {
+          Authorization: "Bearer " + e.MCP_TOKEN,
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await savePreferences({
+          ...preferenceBody,
+          battery_change_percentage: 0,
+        })
+      ).status,
+    ).toBe(400);
+  });
+  it("keeps history off by default and makes no Tesla calls for stored history", async () => {
+    const f = vi.fn();
+    vi.stubGlobal("fetch", f);
+    const result = (await (await req("/api/vehicle/history")).json()) as any;
+    expect(result.enabled).toBe(false);
+    expect(result.observations).toEqual([]);
+    expect(f).not.toHaveBeenCalled();
+  });
+  it("returns grounded context and records encrypted opt-in observations only on live retrieval", async () => {
+    await selected();
+    await savePreferences();
+    const response = await req("/api/vehicle/context");
+    expect(response.status).toBe(200);
+    const context = (await response.json()) as any;
+    expect(context.narrative).toContain("71%");
+    expect(context.changes).toEqual([]);
+    expect(JSON.stringify(context)).not.toContain(vin);
+    await req("/api/vehicle/context"); // Cache hit must not append a sample.
+    const history = (await (await req("/api/vehicle/history")).json()) as any;
+    expect(history.observations).toHaveLength(1);
+    expect(history.observations[0].data.may_incur_api_charges).toBe(false);
+    const ciphertext = await e.DB.prepare(
+      "SELECT value FROM records WHERE key='observation_history'",
+    ).first<{ value: string }>();
+    expect(ciphertext?.value).not.toContain("battery");
+    expect(ciphertext?.value).not.toContain("opaque");
+  });
+  it("removes opt-in history on disable and clears history/preferences on disconnect", async () => {
+    await selected();
+    await savePreferences();
+    await req("/api/vehicle/context");
+    await savePreferences({ ...preferenceBody, history_enabled: false });
+    expect(await store.get("observation_history")).toBeNull();
+    await store.put("observation_history", [
+      normalize(fixture, "opaque", null, false),
+    ]);
+    await req("/auth/disconnect", { method: "POST" });
+    expect(await store.get("observation_history")).toBeNull();
+    expect(await store.get("preferences")).toBeNull();
+  });
+  it("rejects invalid trip inputs before contacting Tesla", async () => {
+    const f = vi.fn();
+    vi.stubGlobal("fetch", f);
+    expect((await req("/api/vehicle/trip?distance_km=-1")).status).toBe(400);
+    expect(f).not.toHaveBeenCalled();
+  });
+  it("recalculates freshness for stored changes without contacting Tesla", async () => {
+    const current = normalize(fixture, "opaque", null, false);
+    current.data.observed_at = new Date(Date.now() - 600000).toISOString();
+    current.data.is_stale = false;
+    await store.put("summary", current);
+    await store.put("previous_summary", current);
+    const f = vi.fn();
+    vi.stubGlobal("fetch", f);
+    const result = (await (await req("/api/vehicle/changes")).json()) as any;
+    expect(result.data.is_stale).toBe(true);
+    expect(result.data.may_incur_api_charges).toBe(false);
+    expect(f).not.toHaveBeenCalled();
+  });
+});

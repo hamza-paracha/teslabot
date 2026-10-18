@@ -13,11 +13,17 @@ export class Store {
     return unseal<T>(row.value, this.env.TOKEN_ENCRYPTION_KEY!, key);
   }
   async put(key: string, value: unknown) {
-    await this.env.DB.prepare(
-      "INSERT INTO records(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-    )
-      .bind(key, await seal(value, this.env.TOKEN_ENCRYPTION_KEY!, key))
-      .run();
+    await this.putMany({ [key]: value });
+  }
+  async putMany(values: Record<string, unknown>) {
+    const statements = await Promise.all(
+      Object.entries(values).map(async ([key, value]) =>
+        this.env.DB.prepare(
+          "INSERT INTO records(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        ).bind(key, await seal(value, this.env.TOKEN_ENCRYPTION_KEY!, key)),
+      ),
+    );
+    if (statements.length) await this.env.DB.batch(statements);
   }
   async delete(key: string) {
     await this.env.DB.prepare("DELETE FROM records WHERE key=?")

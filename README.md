@@ -1,10 +1,12 @@
 # teslabot
 
-A personal Tesla Fleet API backend for AI agents. Runs on Cloudflare Workers with encrypted D1 persistence, a small administrator dashboard, and seven read-only MCP tools.
+A personal Tesla Fleet API backend for AI agents. Runs on Cloudflare Workers with encrypted D1 persistence, a small administrator dashboard, and eleven read-only MCP tools.
 
 Ask an MCP-compatible agent for battery, charging, climate or vehicle status. Tesla credentials stay in the backend. The agent uses a separate read-only credential.
 
-**Status:** backend, dashboard and local stdio MCP implemented. The original deployment has verified Tesla partner registration. Vehicle-owner OAuth, live vehicle readings and an agent-to-car tool invocation still require end-to-end verification. No remote MCP transport is included. Commands, vehicle wakes and scheduled polling are disabled.
+**Status:** backend, dashboard and local stdio MCP implemented. The original deployment has verified Tesla partner registration. Vehicle-owner OAuth is connected in the original deployment, but its authorized account returned no vehicles. Live battery readings still require the correct account, explicit vehicle selection and end-to-end verification. No remote MCP transport is included. Commands, vehicle wakes and scheduled polling are disabled.
+
+See [goal.md](goal.md) for the product vision, implemented capabilities and remaining work.
 
 ## Project layout
 
@@ -12,6 +14,7 @@ Ask an MCP-compatible agent for battery, charging, climate or vehicle status. Te
 src/
   index.ts             Worker entry point, OAuth and administrator routes
   routes/              Vehicle endpoints and HTTP utilities
+  context/             Grounded summaries, change thresholds and trip estimates
   security/            Encryption, sessions and authorization
   storage/             D1 persistence, locking and usage controls
   tesla/               Typed Fleet API client, authentication and normalization
@@ -83,6 +86,13 @@ All data routes require admin session/bearer or the distinct read-only MCP beare
 | GET    | /api/vehicle/location                                | Protected, disabled unless location explicitly enabled              |
 | GET    | /api/vehicle/summary                                 | Protected normalized observation                                    |
 | GET    | /api/vehicle/changes                                 | Protected comparison of last two stored observations; no Tesla call |
+
+Additional protected endpoints:
+
+- `GET /api/vehicle/context`: grounded narrative, meaningful changes and limitations; shares the normal observation cache.
+- `GET /api/vehicle/history`: optional stored observations; no Tesla requests.
+- `GET /api/vehicle/trip?distance_km=100&reserve_percentage=20`: an estimate using the caller's total distance and Tesla's reported range. It does not plan a route or guarantee reachability.
+- `GET/POST /admin/preferences`: administrator-only opt-in history and change thresholds. Disabling history deletes its stored samples.
 
 Responses include retrieved/observed timestamps, stale status, awake information and potential API charges. API failures contain stable codes without upstream sensitive details. Vehicle metadata/cache records are encrypted; VINs are used only server-side. Always inspect stale flags before answering “right now.”
 

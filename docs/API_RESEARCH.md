@@ -41,3 +41,7 @@ This implementation uses Fleet API, not Owner API, password automation, token sc
 [MCP official SDK v2](https://ts.sdk.modelcontextprotocol.io/v2/) uses @modelcontextprotocol/server and local stdio; installed SDK 2.3.1. No unauthenticated remote MCP transport is exposed.
 
 Runtime verification: Cloudflare Workers rejects RequestInit redirect="error". The platform fetch adapter translates it to manual and explicitly refuses all 3xx responses; credentials are never forwarded to redirect targets. This was reproduced in the actual workerd runtime with a non-Tesla test URL. Asset access uses env.ASSETS rather than a network call back into the Worker. The administrative CLI and external smoke checks verify public HTTPS reachability separately.
+
+## Context implementation update
+
+The vehicle list and per-vehicle read/data paths remain those documented in [Tesla vehicle endpoints](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints). Context, history and trip estimates are local application features rather than new Tesla endpoints. Changes represent differences between observed samples, never an exact event timeline. No calendar, map, traffic or efficiency source has been added. MCP uses standard read-only tools described in the [official server concepts](https://modelcontextprotocol.io/docs/learn/server-concepts), with the installed official TypeScript SDK.
