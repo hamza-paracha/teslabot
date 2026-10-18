@@ -3,11 +3,11 @@
 Uses the official MCP TypeScript SDK v2 over local stdio. No remote MCP server or client registration has been performed. Tests connect a real SDK client to the server in memory and invoke a tool against a mocked backend; they do not demonstrate live Tesla data.
 
 ```sh
-cd /absolute/path/to/evintelligence
+cd /absolute/path/to/teslabot
 npm ci
 # Set these locally through a trusted environment/secret manager:
-export EVINTELLIGENCE_URL=https://tesla.example.com
-# EVINTELLIGENCE_MCP_TOKEN must be the distinct backend MCP_TOKEN secret.
+export TESLABOT_URL=https://tesla.example.com
+# TESLABOT_MCP_TOKEN must be the distinct backend MCP_TOKEN secret.
 npm run mcp
 ```
 
@@ -16,22 +16,22 @@ Generic Claude Desktop / MCP-client configuration (placeholders are intentional;
 ```json
 {
   "mcpServers": {
-    "evintelligence": {
+    "teslabot": {
       "command": "/absolute/path/to/node",
       "args": [
-        "/absolute/path/to/evintelligence/node_modules/tsx/dist/cli.mjs",
-        "/absolute/path/to/evintelligence/mcp/src/index.ts"
+        "/absolute/path/to/teslabot/node_modules/tsx/dist/cli.mjs",
+        "/absolute/path/to/teslabot/mcp/src/index.ts"
       ],
       "env": {
-        "EVINTELLIGENCE_URL": "https://tesla.example.com",
-        "EVINTELLIGENCE_MCP_TOKEN": "<read-only backend credential>"
+        "TESLABOT_URL": "https://tesla.example.com",
+        "TESLABOT_MCP_TOKEN": "<read-only backend credential>"
       }
     }
   }
 }
 ```
 
-For Codex, configure an equivalent stdio server under `mcp_servers.evintelligence` using the absolute command/args and an environment supplied securely by the launching process. Client-specific configuration has not been installed or verified; consult the installed client's current schema before editing it. Keep any client configuration containing the bearer credential permission-restricted. The MCP server never receives Tesla tokens or the vehicle private key.
+For Codex, configure an equivalent stdio server under `mcp_servers.teslabot` using the absolute command/args and an environment supplied securely by the launching process. Client-specific configuration has not been installed or verified; consult the installed client's current schema before editing it. Keep any client configuration containing the bearer credential permission-restricted. The MCP server never receives Tesla tokens or the vehicle private key.
 
 Tools: tesla_get_vehicles, tesla_get_vehicle_status, tesla_get_battery, tesla_get_charging_status, tesla_get_climate, tesla_get_location and tesla_get_vehicle_summary. Tools cannot select a different vehicle or change Tesla authorization. Select through the admin dashboard first. Responses include opaque vehicle identifiers, observation/cache metadata and clear error codes. Already-awake is null when unknown, true only for a successful live read checked as online. API charges may apply; a cached response does not trigger a data request.
 

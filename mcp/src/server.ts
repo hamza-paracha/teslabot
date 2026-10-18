@@ -25,7 +25,7 @@ export function createServer(
   )
     throw Error("Backend must be a fixed HTTPS origin");
   if (token.length < 32) throw Error("Missing secure MCP credential");
-  const server = new McpServer({ name: "EVIntelligence", version: "1.0.0" });
+  const server = new McpServer({ name: "teslabot", version: "1.0.0" });
   for (const [name, path] of Object.entries(endpoints))
     server.registerTool(
       name,

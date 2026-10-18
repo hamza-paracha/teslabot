@@ -17,4 +17,4 @@
 - operation_in_progress: another serialized refresh/selection/registration is running. Wait before requesting again.
 - null fields: unavailable or omitted by Tesla. Do not interpret null as false/zero or infer support.
 
-For local checks: npm run typecheck; npm test; npm run build. For deployed safe checks: EVINTELLIGENCE_URL=https://tesla.example.com npm run smoke. The smoke command checks only this service's health, PEM and route protection, never live vehicle data.
+For local checks: npm run typecheck; npm test; npm run build. For deployed safe checks: TESLABOT_URL=https://tesla.example.com npm run smoke. The smoke command checks only this service's health, PEM and route protection, never live vehicle data.

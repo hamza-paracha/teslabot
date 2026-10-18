@@ -1,5 +1,5 @@
 {
-  "name": "evintelligence",
+  "name": "teslabot",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-18",
   "routes": [{ "pattern": "tesla.example.com", "custom_domain": true }],
@@ -23,7 +23,7 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "evintelligence-production",
+      "database_name": "teslabot-production",
       "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations",
     },

@@ -27,7 +27,7 @@ export async function route(r: Request, e: Env): Promise<Response> {
   const u = new URL(r.url),
     p = u.pathname;
   if (p === "/health" && r.method === "GET")
-    return json({ service: "EVIntelligence", status: "ok", mode: "read_only" });
+    return json({ service: "teslabot", status: "ok", mode: "read_only" });
   if (
     p === "/.well-known/appspecific/com.tesla.3p.public-key.pem" &&
     r.method === "GET"

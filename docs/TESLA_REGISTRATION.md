@@ -4,7 +4,7 @@ Replace every example hostname below with your actual deployed HTTPS hostname. T
 
 | Field                   | Value                                                                                                                                                             |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Application Name        | EVIntelligence (Tesla may require a unique name)                                                                                                                  |
+| Application Name        | teslabot (Tesla may require a unique name)                                                                                                                        |
 | Application Description | Personal, read-only Tesla vehicle dashboard and AI assistant integration using the official Tesla Fleet API.                                                      |
 | Purpose of Usage        | Access my authorized personal Tesla's battery, charging, climate and vehicle status through a secure private service. No vehicle commands in the initial release. |
 | OAuth Grant Type        | Authorization Code and Machine-to-Machine                                                                                                                         |

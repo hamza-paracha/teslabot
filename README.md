@@ -1,4 +1,4 @@
-# EVIntelligence
+# teslabot
 
 A personal Tesla Fleet API backend for AI agents. Runs on Cloudflare Workers with encrypted D1 persistence, a small administrator dashboard, and seven read-only MCP tools.
 
@@ -28,8 +28,8 @@ docs/                  Architecture, setup and security guidance
 Requires Node.js 22+, npm, Python 3 and OpenSSL. Cloudflare and Tesla accounts are required for deployment and real data.
 
 ```sh
-git clone https://github.com/hamza-paracha/evintelligence.git
-cd evintelligence
+git clone https://github.com/hamza-paracha/teslabot.git
+cd teslabot
 npm ci
 cp wrangler.example.jsonc wrangler.jsonc
 npm run check
@@ -41,13 +41,13 @@ The configuration template uses an example hostname and an empty database ID. Re
 
 1. Follow [Cloudflare setup](docs/CLOUDFLARE_SETUP.md) to create a dedicated Worker, D1 database and HTTPS subdomain.
 2. Generate a P-256 key pair with `npm run keys`. Back up the private key securely; the script refuses to replace an existing key.
-3. Run `python3 scripts/configure-secrets.py --local` for isolated local credentials, or set `EVINTELLIGENCE_URL` to your real HTTPS origin before generating production credentials. Existing secret values are preserved. Use separate credentials and databases for each environment.
-4. Deploy the registration-ready service and verify the public key URL using `EVINTELLIGENCE_URL=https://tesla.your-domain.tld npm run smoke`.
+3. Run `python3 scripts/configure-secrets.py --local` for isolated local credentials, or set `TESLABOT_URL` to your real HTTPS origin before generating production credentials. Existing secret values are preserved. Use separate credentials and databases for each environment.
+4. Deploy the registration-ready service and verify the public key URL using `TESLABOT_URL=https://tesla.your-domain.tld npm run smoke`.
 5. Register your Tesla application using [these field values](docs/TESLA_REGISTRATION.md), replacing the example domain with your real one. Collect credentials using the hidden prompts in `python3 scripts/configure-secrets.py --tesla`, then upload with its `--upload` option.
 6. Follow [OAuth setup](docs/OAUTH_SETUP.md) to register the partner and connect the account that owns or is authorized to access the vehicle. Select a vehicle explicitly in the dashboard.
 7. Follow [MCP setup](docs/MCP_SETUP.md) to connect your agent. The MCP adapter uses `MCP_TOKEN`, never the administrator credential or Tesla tokens.
 
-For local development, apply migrations with `npx wrangler d1 migrations apply evintelligence-production --local`, then run `npm run dev`. Local tests use an isolated temporary database and mocked Tesla responses.
+For local development, apply migrations with `npx wrangler d1 migrations apply teslabot-production --local`, then run `npm run dev`. Local tests use an isolated temporary database and mocked Tesla responses.
 
 ## Development
 

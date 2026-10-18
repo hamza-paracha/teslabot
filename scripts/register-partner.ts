@@ -1,9 +1,9 @@
 import { validPublicKey, KEY_PATH } from "../src/tesla/partner";
-const origin = process.env.EVINTELLIGENCE_URL,
-  token = process.env.EVINTELLIGENCE_ADMIN_TOKEN;
+const origin = process.env.TESLABOT_URL,
+  token = process.env.TESLABOT_ADMIN_TOKEN;
 if (!origin || !token)
   throw Error(
-    "Set EVINTELLIGENCE_URL and EVINTELLIGENCE_ADMIN_TOKEN in your local shell; do not paste credentials into chat.",
+    "Set TESLABOT_URL and TESLABOT_ADMIN_TOKEN in your local shell; do not paste credentials into chat.",
   );
 const u = new URL(origin);
 if (u.protocol !== "https:" || u.pathname !== "/" || u.username || u.password)

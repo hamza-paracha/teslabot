@@ -1,5 +1,5 @@
 {
-  "name": "evintelligence",
+  "name": "teslabot",
   "version": "1.0.0",
   "description": "Personal read-only Tesla Fleet API integration",
   "scripts": {
