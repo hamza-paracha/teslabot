@@ -1,3 +1,4 @@
+import { chargingPlanSchema, planCharging } from "../../src/context/charging";
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
@@ -9,6 +10,18 @@ import type { Observation } from "../../src/context/observations";
 import { tripSchema } from "../../src/context/observations";
 
 const endpoints = {
+  tesla_get_readiness: [
+    "/api/vehicle/readiness",
+    "Report observed lock, door, window and tire warnings. Missing data is unknown; this is not a safety inspection.",
+  ],
+  tesla_get_tires: [
+    "/api/vehicle/tires",
+    "Read reported tire pressure in bar/PSI and Tesla warning flags when available. Individual pressure measurement age may be unknown.",
+  ],
+  tesla_get_closures: [
+    "/api/vehicle/closures",
+    "Read door, window and trunk open states without operating them.",
+  ],
   tesla_get_vehicles: [
     "/api/vehicles",
     "List authorized vehicles. Selection happens in the admin dashboard.",
@@ -171,6 +184,27 @@ export function createServer(
       const result = assessDestination(
         input,
         response.structuredContent as unknown as Observation,
+      );
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(result) }],
+        structuredContent: result,
+      };
+    },
+  );
+  server.registerTool(
+    "tesla_plan_charging",
+    {
+      description:
+        "Estimate energy, charging time and electricity cost to reach a target state of charge. Caller must supply usable battery capacity; optional charger input power and tariff must be real user/provider inputs. Uses authorized vehicle data and may incur charges. No charging commands are executed; no battery health or historical bill is invented.",
+      inputSchema: chargingPlanSchema,
+      annotations,
+    },
+    async (input) => {
+      const response = await read("/api/vehicle/summary");
+      if (response.isError) return response;
+      const result = planCharging(
+        response.structuredContent as unknown as Observation,
+        input,
       );
       return {
         content: [{ type: "text" as const, text: JSON.stringify(result) }],

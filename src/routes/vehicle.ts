@@ -3,6 +3,7 @@ import { AppError } from "../types";
 import { Store } from "../storage/database";
 import { hash } from "../security/crypto";
 import { TeslaClient, type Vehicle } from "../tesla/client";
+import { readiness } from "../context/readiness";
 import { normalize } from "../tesla/normalization";
 import { json, readJson } from "./http";
 import {
@@ -201,6 +202,8 @@ export async function vehicleRoute(
         "charging",
         "climate",
         "location",
+        "closures",
+        "tires",
       ] as const) {
         if (section === "location" && e.ENABLE_LOCATION !== "true") continue;
         const old = previous[section],
@@ -223,7 +226,7 @@ export async function vehicleRoute(
     });
   }
   const match = p.match(
-    /^\/api\/vehicle(?:\/(battery|charging|location|climate|summary))?$/,
+    /^\/api\/vehicle(?:\/(battery|charging|location|climate|summary|readiness|tires|closures))?$/,
   );
   if (match && r.method === "GET") {
     const field = match[1] ?? "vehicle";
@@ -307,6 +310,7 @@ export async function vehicleRoute(
       e.ENABLE_LOCATION === "true",
     ) as typeof summary;
     if (field === "summary") return json(summary);
+    if (field === "readiness") return json(readiness(summary));
     if (field === "location" && !("location" in summary))
       throw new AppError("location_unavailable", 403);
     return json({

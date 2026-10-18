@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { AppError } from "../types";
 import { freshness } from "../context/observations";
+const opening = z
+  .union([z.boolean(), z.number().finite().nonnegative()])
+  .nullable()
+  .optional();
 const n = z.number().finite().nullable().optional(),
   b = z.boolean().nullable().optional(),
   s = z.string().nullable().optional();
@@ -13,6 +17,9 @@ export const dataSchema = z.object({
       charger_power: n,
       charge_limit_soc: n,
       charge_port_latch: s,
+      charge_energy_added: n,
+      charge_rate: n,
+      usable_battery_level: z.number().min(0).max(100).nullable().optional(),
       time_to_full_charge: n,
       timestamp: n,
     })
@@ -26,6 +33,28 @@ export const dataSchema = z.object({
       odometer: n,
       sentry_mode: b,
       car_version: s,
+      df: opening,
+      dr: opening,
+      pf: opening,
+      pr: opening,
+      ft: opening,
+      rt: opening,
+      fd_window: opening,
+      fp_window: opening,
+      rd_window: opening,
+      rp_window: opening,
+      tpms_pressure_fl: n,
+      tpms_pressure_fr: n,
+      tpms_pressure_rl: n,
+      tpms_pressure_rr: n,
+      tpms_soft_warning_fl: b,
+      tpms_soft_warning_fr: b,
+      tpms_soft_warning_rl: b,
+      tpms_soft_warning_rr: b,
+      tpms_hard_warning_fl: b,
+      tpms_hard_warning_fr: b,
+      tpms_hard_warning_rl: b,
+      tpms_hard_warning_rr: b,
       timestamp: n,
     })
     .optional(),
@@ -68,7 +97,60 @@ export function normalize(
     vehicle: sectionTime(v?.timestamp),
     ...(location ? { location: sectionTime(l?.timestamp) } : {}),
   };
+  const isOpen = (value: boolean | number | null | undefined) =>
+    value == null ? null : typeof value === "boolean" ? value : value > 0;
+  const tire = (
+    pressure: number | null | undefined,
+    soft: boolean | null | undefined,
+    hard: boolean | null | undefined,
+  ) => ({
+    pressure_bar: pressure != null && pressure > 0 ? pressure : null,
+    pressure_psi:
+      pressure != null && pressure > 0
+        ? Math.round(pressure * 14.5037738 * 10) / 10
+        : null,
+    soft_warning: soft ?? null,
+    hard_warning: hard ?? null,
+  });
   return {
+    closures: {
+      doors: {
+        driver_front: isOpen(v?.df),
+        driver_rear: isOpen(v?.dr),
+        passenger_front: isOpen(v?.pf),
+        passenger_rear: isOpen(v?.pr),
+      },
+      windows: {
+        driver_front: isOpen(v?.fd_window),
+        driver_rear: isOpen(v?.rd_window),
+        passenger_front: isOpen(v?.fp_window),
+        passenger_rear: isOpen(v?.rp_window),
+      },
+      front_trunk_open: isOpen(v?.ft),
+      rear_trunk_open: isOpen(v?.rt),
+    },
+    tires: {
+      front_left: tire(
+        v?.tpms_pressure_fl,
+        v?.tpms_soft_warning_fl,
+        v?.tpms_hard_warning_fl,
+      ),
+      front_right: tire(
+        v?.tpms_pressure_fr,
+        v?.tpms_soft_warning_fr,
+        v?.tpms_hard_warning_fr,
+      ),
+      rear_left: tire(
+        v?.tpms_pressure_rl,
+        v?.tpms_soft_warning_rl,
+        v?.tpms_hard_warning_rl,
+      ),
+      rear_right: tire(
+        v?.tpms_pressure_rr,
+        v?.tpms_soft_warning_rr,
+        v?.tpms_hard_warning_rr,
+      ),
+    },
     vehicle: {
       id,
       display_name: name ?? null,
@@ -80,6 +162,7 @@ export function normalize(
     },
     battery: {
       percentage: c?.battery_level ?? null,
+      usable_percentage: c?.usable_battery_level ?? null,
       range_km: c?.battery_range == null ? null : c.battery_range * 1.609344,
     },
     charging: {
@@ -93,6 +176,14 @@ export function normalize(
       power_kw: c?.charger_power ?? null,
       limit_percentage: c?.charge_limit_soc ?? null,
       hours_remaining: c?.time_to_full_charge ?? null,
+      session_energy_added_kwh:
+        c?.charge_energy_added != null && c.charge_energy_added >= 0
+          ? c.charge_energy_added
+          : null,
+      range_added_km_per_hour:
+        c?.charge_rate != null && c.charge_rate >= 0
+          ? c.charge_rate * 1.609344
+          : null,
     },
     climate: {
       interior_c: a?.inside_temp ?? null,

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { readiness } from "./readiness";
 import type { Observation } from "./observations";
 import { estimateTrip, freshness } from "./observations";
 const instant = z
@@ -155,6 +156,7 @@ export function planDepartures(
     });
   return {
     plans,
+    vehicle_attention: observation ? readiness(observation) : null,
     generated_at: new Date(now).toISOString(),
     observation_freshness: observation
       ? freshness(observation.data.observed_at, now)

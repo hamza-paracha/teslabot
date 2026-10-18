@@ -1,7 +1,7 @@
 import { it, expect, vi } from "vitest";
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { createServer } from "../mcp/src/server";
-it("lists thirteen read-only tools and invokes battery over MCP with a mocked backend", async () => {
+it("lists seventeen read-only tools and invokes battery over MCP with a mocked backend", async () => {
   const backend = vi.fn(async (_url: any, _options?: RequestInit) =>
     Response.json({
       vehicle: { id: "opaque" },
@@ -26,7 +26,7 @@ it("lists thirteen read-only tools and invokes battery over MCP with a mocked ba
   await client.connect(b);
   try {
     const tools = await client.listTools();
-    expect(tools.tools).toHaveLength(13);
+    expect(tools.tools).toHaveLength(17);
     expect(tools.tools.every((t) => t.annotations?.readOnlyHint)).toBe(true);
     const result = await client.callTool({
       name: "tesla_get_battery",

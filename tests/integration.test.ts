@@ -752,3 +752,21 @@ it("does not expose cached data from a different selected vehicle to the planner
   await store.put("summary", normalize(fixture, "opaque", null, false));
   expect((await req("/api/vehicle/cached")).status).toBe(409);
 });
+
+it("serves read-only readiness, tires and closures through the normal observation cache", async () => {
+  await store.put("selected", { id: "opaque", vin });
+  await store.put("summary", normalize(fixture, "opaque", null, false));
+  const f = vi.fn();
+  vi.stubGlobal("fetch", f);
+  for (const route of ["readiness", "tires", "closures"]) {
+    expect(
+      (
+        await req("/api/vehicle/" + route, {
+          headers: { Authorization: "Bearer " + e.MCP_TOKEN },
+        })
+      ).status,
+    ).toBe(200);
+    expect((await req("/api/vehicle/" + route, {}, false)).status).toBe(401);
+  }
+  expect(f).not.toHaveBeenCalled();
+});

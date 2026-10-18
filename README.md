@@ -1,10 +1,12 @@
 # teslabot
 
-A personal Tesla Fleet API backend for AI agents. Runs on Cloudflare Workers with encrypted D1 persistence, a small administrator dashboard, and thirteen read-only MCP tools.
+A personal Tesla Fleet API backend for AI agents. Runs on Cloudflare Workers with encrypted D1 persistence, a small administrator dashboard, and seventeen read-only MCP tools.
 
 Ask an MCP-compatible agent for battery, charging, climate or vehicle status. Tesla credentials stay in the backend. The agent uses a separate read-only credential.
 
 **Status:** backend, dashboard and local stdio MCP implemented. The original deployment has verified Tesla partner registration. Vehicle-owner OAuth is connected in the original deployment, but its authorized account returned no vehicles. Live battery readings still require the correct account, explicit vehicle selection and end-to-end verification. No remote MCP transport is included. Commands, vehicle wakes and scheduled polling are disabled.
+
+The latest additions include reported tire/closure checks, a vehicle-attention report and explicit-input charge-time/cost estimates. See [the open-source comparison](docs/OPEN_SOURCE_RESEARCH.md) for sources, licenses and the remaining feature backlog.
 
 See [goal.md](goal.md) for the product vision, implemented capabilities and remaining work.
 
