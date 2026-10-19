@@ -1,123 +1,67 @@
 # teslabot
 
-A personal Tesla Fleet API backend for AI agents. Runs on Cloudflare Workers with encrypted D1 persistence, a small administrator dashboard, and seventeen read-only MCP tools.
+Connect your Tesla to your personal AI agent. Ask about your car, plan a trip, or let your agent help you prepare before you leave.
 
-Ask an MCP-compatible agent for battery, charging, climate or vehicle status. Tesla credentials stay in the backend. The agent uses a separate read-only credential.
+teslabot uses Tesla’s official Fleet API and works through MCP, the standard that lets AI agents use tools.
 
-**Status:** backend, dashboard and local stdio MCP implemented. The original deployment has verified Tesla partner registration. Vehicle-owner OAuth is connected in the original deployment, but its authorized account returned no vehicles. Live battery readings still require the correct account, explicit vehicle selection and end-to-end verification. No remote MCP transport is included. Commands, vehicle wakes and scheduled polling are disabled.
+## What can I ask?
 
-The latest additions include reported tire/closure checks, a vehicle-attention report and explicit-input charge-time/cost estimates. See [the open-source comparison](docs/OPEN_SOURCE_RESEARCH.md) for sources, licenses and the remaining feature backlog.
+| Ask your agent                            | What teslabot helps with                                                                               |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| “How’s my car?”                           | Battery, range, charging, temperature and what changed since the last check.                           |
+| “Can I drive to this place and back?”     | Estimated battery when you arrive and after the round trip, using a driving route from your agent.     |
+| “How long and how much to charge to 80%?” | Estimated charging time, energy and cost, using the battery capacity and electricity rate you provide. |
+| “Did I leave anything open?”              | Available door, window, trunk and lock readings.                                                       |
+| “Anything I should check before leaving?” | Reported tire warnings and other items that need attention.                                            |
 
-See [goal.md](goal.md) for the product vision, implemented capabilities and remaining work.
+Answers include how recent the car’s data is. Missing information stays unknown, and trip estimates include their assumptions.
 
-## Proactive agent plugin
+## What can it do proactively?
 
-The host agent uses its existing authorized calendar, routing and weather tools, then calls `tesla_plan_departures`. For a destination question, `tesla_assess_destination` estimates battery at arrival and after the round trip using host-supplied driving routes. teslabot proposes preparation based on upcoming trips, forecast temperature and cached car data. The host supplies opt-in scheduling, quiet hours and notification delivery. This version can suggest cabin preconditioning but cannot execute it.
+Once you enable a schedule in your agent and connect its calendar, maps and weather tools, it can:
 
-Run `npm run plugin:build` to create a portable local plugin at `dist/teslabot`, containing manifests, a workflow skill and a bundled Node runtime. See [proactive plugin setup](docs/PROACTIVE_PLUGIN.md). The plugin has not been installed in Hermes or hosted ChatGPT.
+- **Look ahead at your calendar.** Notice an upcoming event with a location and work out when you might need to leave.
+- **Check the battery for the trip.** Estimate what you would have left at the destination and after returning, and flag when charging may be needed.
+- **Notice cold departures.** Use the forecast near departure time to suggest planning cabin preconditioning.
+- **Surface things to check.** Include last-known open windows, unlocked state or tire warnings before a trip.
 
-## Project layout
+It uses whichever calendar and weather services your agent already supports. Your agent handles the schedule, quiet hours and notifications.
 
-```text
-src/
-  index.ts             Worker entry point, OAuth and administrator routes
-  routes/              Vehicle endpoints and HTTP utilities
-  context/             Grounded summaries, change thresholds and trip estimates
-  security/            Encryption, sessions and authorization
-  storage/             D1 persistence, locking and usage controls
-  tesla/               Typed Fleet API client, authentication and normalization
-mcp/src/               Local MCP adapter using the official TypeScript SDK
-public/                Dashboard HTML, CSS and JavaScript
-migrations/            D1 schema migrations
-scripts/               Key generation, credential setup and safe smoke checks
-tests/                 Mocked API, security and MCP integration tests
-docs/                  Architecture, setup and security guidance
-```
+**Remote heating and other vehicle commands are not available yet.** The current plugin provides information and suggestions.
 
-## Quick start
+## How it works
 
-Requires Node.js 22+, npm, Python 3 and OpenSSL. Cloudflare and Tesla accounts are required for deployment and real data.
+Your agent brings the calendar, weather and driving directions. teslabot adds authorized Tesla data and planning tools.
+
+A small Cloudflare Worker handles Tesla sign-in and API requests. Sensitive stored data is encrypted, and Tesla credentials stay in the backend. A local MCP plugin connects that backend to a compatible agent.
+
+You sign in directly with Tesla. teslabot never asks for your Tesla password. It also avoids waking the car or continuously polling it.
+
+## Get started
+
+You need a Tesla account with access to the car, a Tesla developer application, a domain, a Cloudflare account and a compatible local agent.
+
+1. [Set up Cloudflare](docs/CLOUDFLARE_SETUP.md) and [register the Tesla app](docs/TESLA_REGISTRATION.md).
+2. [Connect your Tesla account](docs/OAUTH_SETUP.md) and select your vehicle.
+3. [Connect your agent through MCP](docs/MCP_SETUP.md).
+4. [Set up the proactive plugin](docs/PROACTIVE_PLUGIN.md) if you want scheduled checks and suggestions.
+
+Tesla API calls may incur charges. teslabot caches readings and includes local usage limits.
+
+## Current status
+
+The backend and local plugin are implemented. Tesla sign-in, partner registration and the MCP connection have been verified, but the connected account currently returns no vehicles, so real battery readings still need verification.
+
+No agent calendar, notification schedule or hosted ChatGPT connection has been configured. Proactive behavior requires that host setup; installing MCP tools alone does not start a background agent.
+
+## For developers
 
 ```sh
-git clone https://github.com/hamza-paracha/teslabot.git
-cd teslabot
 npm ci
-cp wrangler.example.jsonc wrangler.jsonc
 npm run check
+npm run plugin:build
 ```
 
-The configuration template uses an example hostname and an empty database ID. Replace them before deploying. Actual deployment configuration, generated keys, local credentials and operational DNS records are ignored by Git.
+The plugin build is saved to `dist/teslabot`. Development requires Node.js 22+, Python 3 and OpenSSL. Follow the setup guides above for configuration and credentials.
 
-## Configure and deploy
-
-1. Follow [Cloudflare setup](docs/CLOUDFLARE_SETUP.md) to create a dedicated Worker, D1 database and HTTPS subdomain.
-2. Generate a P-256 key pair with `npm run keys`. Back up the private key securely; the script refuses to replace an existing key.
-3. Run `python3 scripts/configure-secrets.py --local` for isolated local credentials, or set `TESLABOT_URL` to your real HTTPS origin before generating production credentials. Existing secret values are preserved. Use separate credentials and databases for each environment.
-4. Deploy the registration-ready service and verify the public key URL using `TESLABOT_URL=https://tesla.your-domain.tld npm run smoke`.
-5. Register your Tesla application using [these field values](docs/TESLA_REGISTRATION.md), replacing the example domain with your real one. Collect credentials using the hidden prompts in `python3 scripts/configure-secrets.py --tesla`, then upload with its `--upload` option.
-6. Follow [OAuth setup](docs/OAUTH_SETUP.md) to register the partner and connect the account that owns or is authorized to access the vehicle. Select a vehicle explicitly in the dashboard.
-7. Follow [MCP setup](docs/MCP_SETUP.md) to connect your agent. The MCP adapter uses `MCP_TOKEN`, never the administrator credential or Tesla tokens.
-
-For local development, apply migrations with `npx wrangler d1 migrations apply teslabot-production --local`, then run `npm run dev`. Local tests use an isolated temporary database and mocked Tesla responses.
-
-## Development
-
-```sh
-npm run format       # Format source, tests and documentation
-npm run check        # Formatting, TypeScript, tests and Worker dry-run build
-npm run mcp          # Local stdio server; requires backend URL and MCP credential
-```
-
-GitHub Actions runs the same checks on pull requests and pushes. CI never receives production secrets or calls Tesla.
-
-## HTTP API
-
-All data routes require admin session/bearer or the distinct read-only MCP bearer. Administrative routes require admin authentication. Browser mutation requests additionally require matching Origin. No permissive CORS is enabled.
-
-| Method | Route                                                | Access / behavior                                                   |
-| ------ | ---------------------------------------------------- | ------------------------------------------------------------------- |
-| GET    | /                                                    | Public static shell; no vehicle information                         |
-| GET    | /health                                              | Public service liveness, not proof of Tesla connectivity            |
-| GET    | /.well-known/appspecific/com.tesla.3p.public-key.pem | Public P-256 key                                                    |
-| POST   | /admin/session                                       | Admin bearer + same origin; creates secure session                  |
-| POST   | /admin/partner/register                              | Admin; public key check, partner registration/verification          |
-| GET    | /auth/login                                          | Admin; begins owner-account consent                                 |
-| GET    | /auth/callback                                       | Public callback protected by browser-bound one-use state            |
-| GET    | /auth/status                                         | Admin; sanitized configuration/usage status                         |
-| POST   | /auth/disconnect                                     | Admin; deletes local owner credentials/data/sessions                |
-| GET    | /api/vehicles                                        | Protected; opaque authorized identifiers, cached 5 minutes          |
-| POST   | /api/vehicle/select                                  | Admin; body {"id":"opaque identifier"}                              |
-| GET    | /api/vehicle                                         | Protected selected vehicle observation                              |
-| GET    | /api/vehicle/battery                                 | Protected battery percentage/range                                  |
-| GET    | /api/vehicle/charging                                | Protected charging state/power/limit                                |
-| GET    | /api/vehicle/climate                                 | Protected cabin/outside temperature                                 |
-| GET    | /api/vehicle/location                                | Protected, disabled unless location explicitly enabled              |
-| GET    | /api/vehicle/summary                                 | Protected normalized observation                                    |
-| GET    | /api/vehicle/changes                                 | Protected comparison of last two stored observations; no Tesla call |
-
-Additional protected endpoints:
-
-- `GET /api/vehicle/context`: grounded narrative, meaningful changes and limitations; shares the normal observation cache.
-- `GET /api/vehicle/history`: optional stored observations; no Tesla requests.
-- `GET /api/vehicle/trip?distance_km=100&reserve_percentage=20`: an estimate using the caller's total distance and Tesla's reported range. It does not plan a route or guarantee reachability.
-- `GET/POST /admin/preferences`: administrator-only opt-in history and change thresholds. Disabling history deletes its stored samples.
-
-Responses include retrieved/observed timestamps, stale status, awake information and potential API charges. API failures contain stable codes without upstream sensitive details. Vehicle metadata/cache records are encrypted; VINs are used only server-side. Always inspect stale flags before answering “right now.”
-
-## Usage and costs
-
-No automatic polling, wakes or commands. Data is cached for five minutes. Defaults limit Fleet requests to 50/day and locally estimated monthly spending to $5. Local estimates do not cap Tesla billing. API reads may incur charges; see [API research](docs/API_RESEARCH.md) and verify the current Tesla pricing and your account's billing settings before connecting.
-
-## Documentation
-
-- [Architecture](docs/ARCHITECTURE.md)
-- [Cloudflare setup](docs/CLOUDFLARE_SETUP.md)
-- [Tesla registration](docs/TESLA_REGISTRATION.md)
-- [OAuth setup](docs/OAUTH_SETUP.md)
-- [MCP integration](docs/MCP_SETUP.md)
-- [Security and threat model](docs/SECURITY.md)
-- [API research](docs/API_RESEARCH.md)
-- [Troubleshooting](docs/TROUBLESHOOTING.md)
-- [Virtual-key pairing — deferred](docs/VIRTUAL_KEY_PAIRING.md)
-
-Passing mocked tests is not proof of a live Tesla connection. A fresh clone requires its own cloud configuration, credentials, keys and vehicle-owner consent.
+[Project goals](goal.md) · [Architecture](docs/ARCHITECTURE.md) · [HTTP API](docs/HTTP_API.md) · [Security](docs/SECURITY.md) · [Open-source research](docs/OPEN_SOURCE_RESEARCH.md)
