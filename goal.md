@@ -106,6 +106,8 @@ Eventually, the agent might offer: **“It's cold. Want me to warm the cabin to 
 
 ### Still pending
 
+The account-to-agent workflow is now covered by an integrated test using real Worker handlers, local D1 encryption/storage and an MCP client, with only Tesla network responses mocked. It covers connection, explicit selection, battery reads, cache reuse, departure planning, refresh-token rotation and disconnect. All 111 tests pass. This does not substitute for owner sign-in or a live vehicle reading; see [verification details](docs/VERIFICATION.md).
+
 - Explicit selection of an authorized vehicle and a verified live battery reading through MCP.
 - Opt-in scheduling/notification setup and a verified ChatGPT tool invocation. Calendar, route and weather inputs have a typed planning interface, but a real combined calendar/weather/Tesla workflow has not been verified. Charger availability and recorded driving efficiency are still absent.
 - Routine detection such as "charging usually starts overnight"; observations currently support comparisons only.

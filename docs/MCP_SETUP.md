@@ -1,6 +1,6 @@
 # Local MCP integration
 
-Uses the official MCP TypeScript SDK v2 over local stdio. No remote MCP server or client registration has been performed. Tests connect a real SDK client to the server in memory and invoke a tool against a mocked backend; they do not demonstrate live Tesla data.
+Uses the official MCP TypeScript SDK v2 over local stdio. A local client has reached the deployed backend, and a private ChatGPT plugin is connected through a Secure MCP Tunnel; see [ChatGPT setup](CHATGPT_SETUP.md). In-ChatGPT invocation and live vehicle data remain unverified. Tests also connect an MCP client through the real Worker and D1 storage with mocked Tesla responses; see [verification](VERIFICATION.md).
 
 ```sh
 cd /absolute/path/to/teslabot
