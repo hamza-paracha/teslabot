@@ -43,7 +43,7 @@ You need a Tesla account with access to the car, a Tesla developer application, 
 
 1. [Set up Cloudflare](docs/CLOUDFLARE_SETUP.md) and [register the Tesla app](docs/TESLA_REGISTRATION.md).
 2. [Connect your Tesla account](docs/OAUTH_SETUP.md) and select your vehicle.
-3. [Connect your agent through MCP](docs/MCP_SETUP.md).
+3. [Connect ChatGPT](docs/CHATGPT_SETUP.md), or [another agent through MCP](docs/MCP_SETUP.md).
 4. [Set up the proactive plugin](docs/PROACTIVE_PLUGIN.md) if you want scheduled checks and suggestions.
 
 Tesla API calls may incur charges. teslabot caches readings and includes local usage limits.
@@ -52,7 +52,9 @@ Tesla API calls may incur charges. teslabot caches readings and includes local u
 
 The backend and local plugin are implemented. Tesla sign-in, partner registration and the MCP connection have been verified, but the connected account currently returns no vehicles, so real battery readings still need verification.
 
-No agent calendar, notification schedule or hosted ChatGPT connection has been configured. Proactive behavior requires that host setup; installing MCP tools alone does not start a background agent.
+The private ChatGPT plugin and tunnel are connected, with proactive workflow instructions included. A tool call inside ChatGPT still needs verification. The local tunnel requires this Mac to stay online.
+
+No notification schedule has been configured. Proactive delivery requires your opt-in and host setup; installing MCP tools alone does not start a background agent. The planner can respect supplied quiet hours and suppress previously delivered suggestions.
 
 ## For developers
 

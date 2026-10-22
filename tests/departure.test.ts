@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { departureSchema, planDepartures } from "../src/context/departure";
+import { normalize } from "../src/tesla/normalization";
 const now = Date.parse("2026-10-18T12:00:00Z");
 function input() {
   return departureSchema.parse({
@@ -10,6 +11,7 @@ function input() {
         starts_at: "2026-10-19T09:00:00-04:00",
         location: "Office",
         travel_minutes: 30,
+        travel_mode: "driving",
       },
     ],
     departure_forecast: {
@@ -71,4 +73,47 @@ it("requires bounded inputs and unambiguous time zones", () => {
     departureSchema.safeParse({ events: Array(31).fill(input().events[0]) })
       .success,
   ).toBe(false);
+});
+
+it("does not propose vehicle preparation for unknown driving intent or virtual events", () => {
+  const value = input();
+  value.events[0].travel_mode = "unknown";
+  expect(planDepartures(value, null, now).plans[0].proposals).toEqual([]);
+  value.events[0].virtual = true;
+  expect(planDepartures(value, null, now).plans).toEqual([]);
+});
+
+it("keeps recurring instances and honors a later cancellation revision", () => {
+  const value = input();
+  value.events.push({ ...value.events[0], starts_at: "2026-10-20T09:00:00Z" });
+  expect(planDepartures(value, null, now).plans).toHaveLength(2);
+  value.events.push({ ...value.events[0], cancelled: true });
+  expect(planDepartures(value, null, now).plans).toHaveLength(1);
+});
+
+it("recommends reviewing charge only with fresh battery data and confirmed driving", () => {
+  const clock = Date.now();
+  const value = input();
+  value.events[0].starts_at = new Date(clock + 3600000).toISOString();
+  value.events[0].total_distance_km = 100;
+  const observation = normalize(
+    {
+      charge_state: { battery_level: 30, battery_range: 70, timestamp: clock },
+    },
+    "test",
+    null,
+    false,
+  );
+  const result = planDepartures(value, observation, clock);
+  expect(result.briefing.suggestions.map((item) => item.kind)).toContain(
+    "review_trip_charge",
+  );
+  expect(result.briefing.should_notify).toBe(false);
+  expect(
+    planDepartures(value, observation, clock + 600000).briefing.suggestions,
+  ).toEqual([]);
+  value.events[0].travel_mode = "unknown";
+  expect(
+    planDepartures(value, observation, clock).briefing.suggestions,
+  ).toEqual([]);
 });

@@ -31,21 +31,25 @@ export function freshness(observedAt: string | null, now = Date.now()) {
   };
 }
 
-export function refreshObservation(current: Observation): Observation {
+export function refreshObservation(
+  current: Observation,
+  now = Date.now(),
+): Observation {
   const sections = Object.fromEntries(
     Object.entries(current.data.sections ?? {}).map(([name, section]) => [
       name,
-      freshness(section.observed_at),
+      freshness(section.observed_at, now),
     ]),
   ) as Observation["data"]["sections"];
   return {
     ...current,
     data: {
       ...current.data,
-      ...freshness(current.data.observed_at),
+      ...freshness(current.data.observed_at, now),
       sections,
       is_stale:
-        current.data.is_stale || freshness(current.data.observed_at).is_stale,
+        current.data.is_stale ||
+        freshness(current.data.observed_at, now).is_stale,
     },
   };
 }
@@ -192,9 +196,10 @@ export const tripSchema = z
 export function estimateTrip(
   current: Observation,
   input: z.infer<typeof tripSchema>,
+  now = Date.now(),
 ) {
-  current = refreshObservation(current);
-  const observed = freshness(current.data.observed_at);
+  current = refreshObservation(current, now);
+  const observed = freshness(current.data.observed_at, now);
   const battery = current.battery.percentage,
     range = current.battery.range_km;
   const usable =

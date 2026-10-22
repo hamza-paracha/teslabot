@@ -95,10 +95,19 @@ Eventually, the agent might offer: **“It's cold. Want me to warm the cabin to 
 - A real MCP battery invocation reached the backend and returned `select_vehicle_first`. No battery value was available. The owner needs to confirm the correct account and vehicle permissions before a battery read can be verified.
 - Deployed health, exact public-key matching, unauthorized-route protection, default history preferences, and MCP restrictions on admin routes have been checked.
 
+### ChatGPT and proactive briefing update — October 22, 2026
+
+- Connected the private ChatGPT teslabot plugin through an OpenAI Secure MCP Tunnel; the local managed runtime reports healthy and ready. Saved and read back plugin version 1.0.1 with the proactive workflow skill, preserving its existing App binding and private audience.
+- Added explicit driving intent, filtering for declined/all-day/virtual events, recurring instance handling and last-revision cancellation handling.
+- Added opt-in notification eligibility with IANA time zones, quiet hours, due times, expiry, bounded batches and host-supplied delivered-key history. The host still owns consent, scheduling and delivery; nothing sends automatically.
+- Added charge-review suggestions grounded in fresh reported range and actual supplied trip distance. Cold-weather suggestions remain non-executable reviews.
+- The tunnel key is restricted to Read/Use, stored in macOS Keychain and expires after 30 days. This Mac must stay online. No automatic startup or renewal is configured.
+- In-ChatGPT invocation remains unverified because native browser control could not start during this update. Local MCP verification is separate from ChatGPT-host verification.
+
 ### Still pending
 
 - Explicit selection of an authorized vehicle and a verified live battery reading through MCP.
-- Host installation and opt-in scheduling/notification setup. Calendar, route and weather inputs now have a typed planning interface, but no host calendar or weather tool has been connected or verified. Charger availability and recorded driving efficiency are still absent.
+- Opt-in scheduling/notification setup and a verified ChatGPT tool invocation. Calendar, route and weather inputs have a typed planning interface, but a real combined calendar/weather/Tesla workflow has not been verified. Charger availability and recorded driving efficiency are still absent.
 - Routine detection such as "charging usually starts overnight"; observations currently support comparisons only.
-- An authenticated remote MCP transport for hosted clients.
+- Always-on hosting for the tunnel runtime, if needed; the current private authenticated tunnel runs locally.
 - Any vehicle commands or virtual-key pairing. These remain disabled and require separate authorization and implementation.
