@@ -174,6 +174,7 @@ describe("security", () => {
 describe("OAuth", () => {
   it("constructs exact least-privilege authorization URL", () => {
     const u = new URL(authorizationUrl(e, "state"));
+    expect(u.searchParams.get("prompt")).toBe("login");
     expect(u.origin).toBe("https://auth.tesla.com");
     expect(u.searchParams.get("scope")).toBe(
       "openid offline_access vehicle_device_data",
