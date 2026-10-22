@@ -1,5 +1,23 @@
 # Architecture
 
+## Source layout
+
+| Location                        | Responsibility                                                                      |
+| ------------------------------- | ----------------------------------------------------------------------------------- |
+| `src/index.ts`                  | Public routes, central authorization checks, dispatch and response security headers |
+| `src/routes/auth.ts`            | Browser-bound OAuth callback and protected connection/status/disconnect routes      |
+| `src/routes/vehicle.ts`         | Vehicle selection, readings, caches and observation preferences                     |
+| `src/tesla/`                    | Tesla authentication, partner registration, API requests and response normalization |
+| `src/context/`                  | Pure trip, charging, readiness, history and proactive planning logic                |
+| `src/security/`, `src/storage/` | Session authorization, encryption and D1 persistence                                |
+| `mcp/src/`                      | Read-only agent tools and backend configuration                                     |
+| `plugin/teslabot/`              | Portable plugin manifest and proactive workflow skill                               |
+| `public/`                       | Static admin dashboard                                                              |
+| `scripts/`                      | Setup, key generation, tunnel management, builds and verification commands          |
+| `tests/`                        | Endpoint, planning and account-to-agent tests with local fixtures                   |
+
+## Runtime behavior
+
 Browser administrator -> Worker -> encrypted D1 records / Tesla Fleet API.
 Local MCP client -> local stdio server -> HTTPS Worker with a separate read-only bearer credential.
 

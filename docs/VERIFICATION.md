@@ -10,9 +10,9 @@ npm run check
 npm run plugin:build
 ```
 
-The check command runs formatting, TypeScript, Vitest and a Worker dry-run build. It makes no live Tesla requests. All 111 tests pass across seven test files.
+The check command runs formatting, TypeScript, Vitest and a Worker dry-run build. It makes no live Tesla requests. All 111 tests pass across eight test files.
 
-The integrated `account-to-agent workflow` test in `tests/integration.test.ts` uses real application route handlers, a local Cloudflare D1 database, application encryption and an official MCP client/server transport. Only Tesla's network responses are mocked. It checks:
+The integrated `account-to-agent workflow` test in `tests/workflow.test.ts` uses real application route handlers, a local Cloudflare D1 database, application encryption and an official MCP client/server transport. Shared fixtures and database lifecycle live in `tests/helpers/app.ts`; endpoint tests remain in `tests/integration.test.ts`. Only Tesla's network responses are mocked. The workflow checks:
 
 1. Authorization URL requests a fresh login; state and a browser-bound cookie come from the real login route.
 2. The callback exchanges a fixture authorization code and establishes an admin session.

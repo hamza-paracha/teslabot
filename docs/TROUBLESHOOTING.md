@@ -1,7 +1,8 @@
 # Troubleshooting
 
 - service_not_configured: check D1 binding, APP_ORIGIN and generated secret names; never log their values.
-- unauthorized: open administrator session or provide the appropriate bearer credential.
+- unauthorized: open an administrator session or provide the appropriate bearer credential. Disconnect invalidates dashboard sessions; reopen the dashboard and enter the administrator credential again before reconnecting.
+- disconnect_before_reconnecting: disconnect the current Tesla account, sign back into the dashboard and then connect the intended vehicle-owning account.
 - read_only_token: MCP token cannot administer accounts or select vehicles.
 - tesla_credentials_missing: Tesla registration/secret upload is pending.
 - partner_registration_required: verify HTTPS PEM, correct origin/domain and complete partner registration in NA.

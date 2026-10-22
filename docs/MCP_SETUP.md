@@ -46,7 +46,7 @@ python3 scripts/configure-mcp.py --url https://tesla.your-domain.tld
 TESLABOT_CONFIG=/absolute/path/to/teslabot/secrets/mcp.json npm run mcp:verify
 ```
 
-The file contains only the backend HTTPS origin and MCP_TOKEN, never Tesla credentials or the administrator token. Point a local client at the same Node/tsx command shown above and set `TESLABOT_CONFIG` instead of embedding a token. This works with any client that supports standard local stdio MCP; Hermes and hosted ChatGPT configuration have not been installed or verified.
+The file contains only the backend HTTPS origin and MCP_TOKEN, never Tesla credentials or the administrator token. Point a local client at the same Node/tsx command shown above and set `TESLABOT_CONFIG` instead of embedding a token. This works with clients that support standard local stdio MCP. Hermes installation remains unverified. For the private hosted ChatGPT connection and its verification limits, see [ChatGPT setup](CHATGPT_SETUP.md).
 
 `npm run mcp:verify -- tesla_get_battery` invokes a real SDK client and child-process server against the configured backend. It prints sanitized verification metadata. A successful empty vehicle list proves transport and account access only; it is not proof of live vehicle data.
 

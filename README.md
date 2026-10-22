@@ -98,4 +98,4 @@ npm run plugin:build
 
 `npm run check` runs formatting, TypeScript, mocked tests and a Worker deployment dry run. It does not sign into Tesla, deploy changes or call live Tesla endpoints. The portable plugin is built into `dist/teslabot`; supply its private configuration separately.
 
-[Goals](goal.md) · [Architecture](docs/ARCHITECTURE.md) · [HTTP API](docs/HTTP_API.md) · [Security](docs/SECURITY.md) · [Open-source research](docs/OPEN_SOURCE_RESEARCH.md)
+[Documentation](docs/README.md) · [Goals](goal.md) · [Architecture](docs/ARCHITECTURE.md) · [HTTP API](docs/HTTP_API.md) · [Security](docs/SECURITY.md) · [Open-source research](docs/OPEN_SOURCE_RESEARCH.md)
