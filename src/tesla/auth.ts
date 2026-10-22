@@ -27,6 +27,9 @@ export function authorizationUrl(e: Env, state: string) {
     client_id: e.TESLA_CLIENT_ID!,
     redirect_uri: e.APP_ORIGIN + "/auth/callback",
     response_type: "code",
+    // Tesla's documented example requests a fresh login instead of silently
+    // reusing the developer account's existing browser session.
+    prompt: "login",
     scope: scopes(e).join(" "),
     state,
     prompt_missing_scopes: "true",
