@@ -11,6 +11,9 @@ private-key.pem
 *.log
 coverage/
 .DS_Store
+__pycache__/
+*.pyc
+.ruff_cache/
 
 # Operator-specific deployment configuration and generated public key
 wrangler.jsonc

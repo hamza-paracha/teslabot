@@ -64,6 +64,14 @@ const endpoints = {
   ],
 } as const;
 
+function toolResult(data: Record<string, unknown>, isError = false) {
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(data) }],
+    structuredContent: data,
+    isError,
+  };
+}
+
 export function createServer(
   origin: string,
   token: string,
@@ -97,11 +105,7 @@ export function createServer(
       const data: unknown = await response.json();
       if (!data || typeof data !== "object" || Array.isArray(data))
         throw Error("Invalid backend response");
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(data) }],
-        structuredContent: data as Record<string, unknown>,
-        isError: !response.ok,
-      };
+      return toolResult(data as Record<string, unknown>, !response.ok);
     } catch {
       return {
         content: [{ type: "text" as const, text: "Backend unavailable" }],
@@ -157,10 +161,7 @@ export function createServer(
               ?.code ?? "backend_unavailable")
           : null,
       };
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(result) }],
-        structuredContent: result,
-      };
+      return toolResult(result);
     },
   );
   server.registerTool(
@@ -174,10 +175,7 @@ export function createServer(
     async (input) => {
       if (!input.origin || !input.route) {
         const result = assessDestination(input, null);
-        return {
-          content: [{ type: "text" as const, text: JSON.stringify(result) }],
-          structuredContent: result,
-        };
+        return toolResult(result);
       }
       const response = await read("/api/vehicle/summary");
       if (response.isError) return response;
@@ -185,10 +183,7 @@ export function createServer(
         input,
         response.structuredContent as unknown as Observation,
       );
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(result) }],
-        structuredContent: result,
-      };
+      return toolResult(result);
     },
   );
   server.registerTool(
@@ -206,10 +201,7 @@ export function createServer(
         response.structuredContent as unknown as Observation,
         input,
       );
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(result) }],
-        structuredContent: result,
-      };
+      return toolResult(result);
     },
   );
   return server;
