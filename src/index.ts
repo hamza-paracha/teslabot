@@ -12,6 +12,7 @@ import {
 import { authRoute, oauthCallback } from "./routes/auth";
 import { vehicleRoute } from "./routes/vehicle";
 import { json } from "./routes/http";
+import { recovery } from "./routes/recovery";
 export async function route(r: Request, e: Env): Promise<Response> {
   const u = new URL(r.url),
     p = u.pathname;
@@ -81,7 +82,25 @@ export default {
     } catch (error) {
       const err =
         error instanceof AppError ? error : new AppError("internal_error", 500);
-      response = json({ error: { code: err.code } }, err.status);
+      const u = new URL(r.url);
+      if (
+        (u.pathname === "/auth/callback" || u.pathname === "/auth/login") &&
+        r.headers.get("Accept")?.includes("text/html")
+      ) {
+        // Remove the authorization code/state from the browser's address bar.
+        // Only our stable application code is included in the landing URL.
+        response = new Response(null, {
+          status: 303,
+          headers: {
+            Location: "/?oauth_error=" + encodeURIComponent(err.code),
+          },
+        });
+      } else {
+        response = json(
+          { error: { code: err.code, ...recovery(err.code, e.APP_ORIGIN) } },
+          err.status,
+        );
+      }
       if (err.retryAfter) response.headers.set("Retry-After", err.retryAfter);
     }
     response = new Response(response.body, response);

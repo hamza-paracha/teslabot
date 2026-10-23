@@ -42,12 +42,19 @@
           </div>
           <dl id="setup"></dl>
           <div class="actions">
-            <a class="button" href="/auth/login">Connect Tesla Account</a
-            ><button id="refresh">Refresh Vehicle Data</button
+            <button id="connect">Connect Tesla Account</button
+            ><button id="reconnect" class="secondary" hidden>
+              Reconnect Tesla Account</button
+            ><button id="refresh" disabled>Refresh Vehicle Data</button
             ><button id="disconnect" class="secondary">
               Disconnect Tesla Account
             </button>
           </div>
+          <p id="account-guidance">
+            Sign in with the account that shows your car in the Tesla app. It
+            may differ from your Tesla developer account. Approve Vehicle
+            Information and access to the intended car on Tesla's consent page.
+          </p>
           <p class="hint">
             Refresh may incur Tesla API charges. Sleeping vehicles are never
             woken.
@@ -56,10 +63,18 @@
         <section>
           <h2>Your vehicle</h2>
           <label for="vehicles">Select an authorized vehicle</label
-          ><select id="vehicles">
+          ><select id="vehicles" disabled aria-describedby="vehicle-guidance">
             <option value="">Load authorized vehicles first</option></select
-          ><button id="discover" class="secondary">Load vehicles</button
-          ><button id="select" class="secondary">Select vehicle</button>
+          ><button id="discover" class="secondary" disabled>
+            Load vehicles</button
+          ><button id="select" class="secondary" disabled>
+            Select vehicle
+          </button>
+          <p id="vehicle-guidance" role="status" aria-live="polite">
+            Connect your Tesla account, load vehicles and explicitly select the
+            car.
+          </p>
+          <p id="vehicle-check" class="hint"></p>
           <div class="metrics">
             <article>
               <h3>Battery</h3>
