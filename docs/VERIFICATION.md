@@ -1,16 +1,18 @@
 # Verification
 
-Last local validation: October 22, 2026. These checks do not require an owner sign-in.
+Last local validation: October 23, 2026. These checks do not require an owner sign-in. The reconnection update is local code; it has not been deployed or verified with a live owner account.
 
 ## Repeatable checks
 
 ```sh
 npm ci
+# For a fresh checkout without operator configuration:
+cp wrangler.example.jsonc wrangler.jsonc
 npm run check
 npm run plugin:build
 ```
 
-The check command runs formatting, TypeScript, Vitest and a Worker dry-run build. It makes no live Tesla requests. All 111 tests pass across eight test files.
+The check command runs formatting, TypeScript, Vitest and a Worker dry-run build. It makes no live Tesla requests. All 132 tests pass across nine test files. Keep an existing operator Wrangler configuration instead of overwriting it with the example.
 
 The integrated `account-to-agent workflow` test in `tests/workflow.test.ts` uses real application route handlers, a local Cloudflare D1 database, application encryption and an official MCP client/server transport. Shared fixtures and database lifecycle live in `tests/helpers/app.ts`; endpoint tests remain in `tests/integration.test.ts`. Only Tesla's network responses are mocked. The workflow checks:
 
@@ -25,6 +27,8 @@ The integrated `account-to-agent workflow` test in `tests/workflow.test.ts` uses
 9. Disconnect removes the owner credentials and invalidates the browser session; subsequent battery reads fail.
 
 Other tests cover state expiry/replay and wrong-browser rejection, denied consent, partner registration, permissions, sleeping/offline vehicles, timeouts, rate limits, budgets, stale data, route assumptions, sensor availability, quiet hours across DST, cancellation/recurring instances and delivery deduplication.
+
+The additional recovery workflow starts with a successful empty vehicle list and an MCP battery error, reconnects through the actual OAuth handlers with mocked Tesla, discovers a vehicle and requires browser-admin selection before the MCP battery fixture can be read. `tests/access.test.ts` verifies protected reconnection, one-use browser-bound replacement transactions, preservation on failed/denied sign-in, old session/data cleanup on success, pending transaction invalidation on disconnect, actionable empty-list errors, forced metadata reload, missing versus unknown scope, selection invalidation and rejection of stale cache fallback after authorization failures. Live observations explicitly include `cache_hit:false`; cache reuse is marked `true`.
 
 The mocked flow does not emulate Safari cookies, Tesla's login UI, real account consent or a real ChatGPT conversation. It cannot certify those external behaviors.
 
@@ -55,4 +59,12 @@ With the private MCP configuration supplied securely, `npm run plugin:verify` la
 | Scheduled notification delivery                            | Not configured; requires host support and user opt-in       |
 | Commands and virtual-key pairing                           | Disabled; outside the current phase                         |
 
-When owner access is available, reconnect the account that shows the vehicle in Tesla's mobile app, select it explicitly, and compare a timestamped battery reading with the official app. Then verify one read-only tool invocation inside ChatGPT. Test a calendar briefing on demand before opting into a schedule. No command or automatic wake is needed for these acceptance checks.
+Before using this update, apply pending D1 migrations, including `0002_oauth_purpose.sql`, to the existing bound database, deploy the Worker and rebuild/restart the local MCP/plugin runtime. See [deployment details](CLOUDFLARE_SETUP.md). No production mutation was performed during local verification.
+
+When owner access is available:
+
+1. Open an admin dashboard session and use Connect / Reconnect Tesla Account. Sign into the account that shows the car in the official app; approve Vehicle Information and access to that car. A denial or failed exchange must preserve any previous connection.
+2. On returning to the dashboard, inspect discovery. If Tesla returns zero vehicles, follow the account/consent guidance and use Reload vehicles after fixing access. Tesla notes permissions can take a couple of hours to sync. With MCP, `tesla_get_vehicles({"refresh":true})` also bypasses the five-minute metadata cache. No vehicle may be selected automatically.
+3. Choose the intended display name/state and click Select vehicle. A vehicle being asleep should not prevent selection; a battery request must report asleep or explicitly stale cached data without waking it.
+4. Once naturally online, request battery data and compare its percentage and observation timestamp with the official app. Run `TESLABOT_CONFIG=/private/path/mcp.json npm run plugin:verify -- tesla_get_battery` for the real stdio MCP path. Inspect `source=tesla_fleet_api`, `is_stale=false`, observation time and the actual value. `cache_hit=true` means reuse of an earlier read; do not describe it as a new live request. Zero vehicles, null battery or any setup error remains a failed vehicle-data acceptance check.
+5. Verify one read-only tool invocation inside ChatGPT. Test a calendar briefing on demand with actual host-supplied calendar, driving route and weather inputs before opting into a schedule. Missing inputs must remain missing. No command, virtual key or automatic wake is needed.

@@ -35,6 +35,8 @@ For Codex, configure an equivalent stdio server under `mcp_servers.teslabot` usi
 
 Tools: tesla_get_vehicles, tesla_get_vehicle_status, tesla_get_battery, tesla_get_charging_status, tesla_get_climate, tesla_get_location, tesla_get_vehicle_summary, tesla_get_vehicle_context, tesla_get_vehicle_changes, tesla_get_vehicle_history, tesla_estimate_trip, tesla_plan_departures, tesla_assess_destination, tesla_get_readiness, tesla_get_tires, tesla_get_closures and tesla_plan_charging. Tools cannot select a different vehicle or change Tesla authorization. Select through the admin dashboard first. Responses include opaque vehicle identifiers, observation/cache metadata and clear error codes. Already-awake is null when unknown, true only for a successful live read checked as online. API charges may apply; a cached response does not trigger a data request.
 
+`tesla_get_vehicles` accepts optional `{"refresh":true}` to explicitly check Tesla again instead of using its five-minute metadata cache. Inspect `status`, `selected_id`, `data.cache_hit` and any `guidance`. Empty lists and missing selections include the dashboard URL and account/consent/selection recovery steps; they never include a battery value. Use the dashboard's Reconnect Tesla Account if needed, then explicitly select the intended car. The tool remains read-only and never wakes a vehicle.
+
 For a real verification after connection, invoke tesla_get_battery and verify source=tesla_fleet_api, the selected opaque vehicle ID, non-stale observation time and actual battery data. Do not call stale/mock output a live result. The broader agent must treat stale observations as historical and never fabricate a current percentage.
 
 ## Private configuration and verification
@@ -49,6 +51,8 @@ TESLABOT_CONFIG=/absolute/path/to/teslabot/secrets/mcp.json npm run mcp:verify
 The file contains only the backend HTTPS origin and MCP_TOKEN, never Tesla credentials or the administrator token. Point a local client at the same Node/tsx command shown above and set `TESLABOT_CONFIG` instead of embedding a token. This works with clients that support standard local stdio MCP. Hermes installation remains unverified. For the private hosted ChatGPT connection and its verification limits, see [ChatGPT setup](CHATGPT_SETUP.md).
 
 `npm run mcp:verify -- tesla_get_battery` invokes a real SDK client and child-process server against the configured backend. It prints sanitized verification metadata. A successful empty vehicle list proves transport and account access only; it is not proof of live vehicle data.
+
+For an explicit metadata reload, use `npm run mcp:verify -- tesla_get_vehicles --refresh` (or `npm run plugin:verify -- tesla_get_vehicles --refresh` after rebuilding the plugin). The verifier prints discovery/selection guidance and cache status. The refresh flag is limited to the vehicle list; it does not bypass the battery cache or wake the car.
 
 For “How's the car?”, use `tesla_get_vehicle_context`. Report stale data as last known, respect section timestamps and nulls, and never infer a routine or exact charging transition time. `tesla_estimate_trip` requires total distance including every leg and optionally a reserve percentage (default 20). Its output is a limited range estimate, not navigation guidance or a reachability guarantee. Calendar, maps, weather and charger data need separately authorized integrations.
 

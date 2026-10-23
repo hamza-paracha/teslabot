@@ -6,10 +6,12 @@ import { cookie, makeSession, sessionCookie } from "../security/authorization";
 import {
   authorizationUrl,
   regions,
+  scopes,
   tokenRequest,
   type Tokens,
 } from "../tesla/auth";
 import { json } from "./http";
+import { clearVehicleData, vehicleAccess } from "../tesla/vehicles";
 
 const redirect = (path: string, headers: HeadersInit = {}) =>
   new Response(null, { status: 303, headers: { Location: path, ...headers } });
@@ -26,34 +28,50 @@ export async function oauthCallback(
   const state = u.searchParams.get("state"),
     browser = cookie(r, "__Host-ev_oauth");
   if (!state || !browser) throw new AppError("invalid_oauth_state");
-  const transaction = await e.DB.prepare(
-    "DELETE FROM oauth_states WHERE hash=? AND browser_hash=? AND expires>? RETURNING hash",
-  )
-    .bind(await hash(state), await hash(browser), Date.now())
-    .first();
-  if (!transaction) throw new AppError("expired_or_replayed_state");
-  if (u.searchParams.has("error")) throw new AppError("oauth_consent_denied");
-  const code = u.searchParams.get("code");
-  if (!code || code.length > 4096)
-    throw new AppError("missing_authorization_code");
-  await store.locked("account", async () => {
-    if (await store.get("owner_tokens"))
-      throw new AppError("disconnect_before_reconnecting", 409);
-    const tokens = await tokenRequest({
-      grant_type: "authorization_code",
-      client_id: e.TESLA_CLIENT_ID!,
-      client_secret: e.TESLA_CLIENT_SECRET!,
-      code,
-      audience: regions[e.TESLA_REGION],
-      redirect_uri: e.APP_ORIGIN + "/auth/callback",
-    });
-    if (!tokens.refresh_token) throw new AppError("missing_refresh_token", 502);
-    await store.put("owner_tokens", tokens);
-    await store.audit("oauth_connected");
-  });
-  const response = redirect("/");
+  const session = await store.locked("vehicle", () =>
+    store.locked("account", async () => {
+      // Consume state under the same locks as disconnect/replacement. A completed
+      // disconnect must invalidate every pending sign-in, including callbacks.
+      const transaction = await e.DB.prepare(
+        "DELETE FROM oauth_states WHERE hash=? AND browser_hash=? AND expires>? RETURNING purpose",
+      )
+        .bind(await hash(state), await hash(browser), Date.now())
+        .first<{ purpose: string }>();
+      if (!transaction) throw new AppError("expired_or_replayed_state");
+      if (u.searchParams.has("error"))
+        throw new AppError("oauth_consent_denied");
+      const code = u.searchParams.get("code");
+      if (!code || code.length > 4096)
+        throw new AppError("missing_authorization_code");
+      if (
+        transaction.purpose !== "reconnect" &&
+        (await store.get("owner_tokens"))
+      )
+        throw new AppError("disconnect_before_reconnecting", 409);
+      const tokens = await tokenRequest({
+        grant_type: "authorization_code",
+        client_id: e.TESLA_CLIENT_ID!,
+        client_secret: e.TESLA_CLIENT_SECRET!,
+        code,
+        audience: regions[e.TESLA_REGION],
+        redirect_uri: e.APP_ORIGIN + "/auth/callback",
+      });
+      if (!tokens.refresh_token)
+        throw new AppError("missing_refresh_token", 502);
+      // Commit the replacement and cleanup together, only after a valid token exchange.
+      await store.putMany({ owner_tokens: tokens }, [
+        clearVehicleData(store),
+        e.DB.prepare("DELETE FROM records WHERE key='preferences'"),
+        e.DB.prepare("DELETE FROM sessions"),
+        e.DB.prepare("DELETE FROM oauth_states"),
+      ]);
+      await store.audit("oauth_connected");
+      return makeSession(e);
+    }),
+  );
+  const response = redirect("/?oauth=connected");
   response.headers.append("Set-Cookie", browserCookie("", 0));
-  response.headers.append("Set-Cookie", sessionCookie(await makeSession(e)));
+  response.headers.append("Set-Cookie", sessionCookie(session));
   return response;
 }
 
@@ -76,6 +94,16 @@ export async function authRoute(
       configured: !!(e.TESLA_CLIENT_ID && e.TESLA_CLIENT_SECRET),
       connected: !!tokens,
       vehicle_selected: !!selected,
+      vehicle_access: await vehicleAccess(store),
+      authorization: {
+        requested_scopes: scopes(e),
+        vehicle_information:
+          tokens?.scope === undefined
+            ? "unknown"
+            : tokens.scope.split(/\s+/).includes("vehicle_device_data")
+              ? "granted"
+              : "missing",
+      },
       partner: (await store.get("partner_status")) ?? "unverified",
       virtual_key: "unverified",
       commands_enabled: false,
@@ -83,10 +111,13 @@ export async function authRoute(
       usage: usage.results,
     });
   }
-  if (p === "/auth/login" && r.method === "GET") {
+  if (
+    (p === "/auth/login" && r.method === "GET") ||
+    (p === "/auth/reconnect" && r.method === "POST")
+  ) {
     if (!e.TESLA_CLIENT_ID || !e.TESLA_CLIENT_SECRET)
       throw new AppError("tesla_credentials_missing", 503);
-    if (await store.get("owner_tokens"))
+    if (p === "/auth/login" && (await store.get("owner_tokens")))
       throw new AppError("disconnect_before_reconnecting", 409);
     const state = random(),
       browser = random();
@@ -94,10 +125,20 @@ export async function authRoute(
       .bind(Date.now())
       .run();
     await e.DB.prepare(
-      "INSERT INTO oauth_states(hash,browser_hash,expires) VALUES(?,?,?)",
+      "INSERT INTO oauth_states(hash,browser_hash,expires,purpose) VALUES(?,?,?,?)",
     )
-      .bind(await hash(state), await hash(browser), Date.now() + 600000)
+      .bind(
+        await hash(state),
+        await hash(browser),
+        Date.now() + 600000,
+        p === "/auth/reconnect" ? "reconnect" : "connect",
+      )
       .run();
+    if (p === "/auth/reconnect") {
+      const response = json({ authorization_url: authorizationUrl(e, state) });
+      response.headers.set("Set-Cookie", browserCookie(browser));
+      return response;
+    }
     return redirect(authorizationUrl(e, state), {
       "Set-Cookie": browserCookie(browser),
     });
@@ -106,13 +147,9 @@ export async function authRoute(
     await store.locked("vehicle", () =>
       store.locked("account", async () => {
         await e.DB.batch([
-          e.DB.prepare("DELETE FROM records WHERE key IN (?,?,?,?,?,?,?)").bind(
+          clearVehicleData(store),
+          e.DB.prepare("DELETE FROM records WHERE key IN (?,?)").bind(
             "owner_tokens",
-            "selected",
-            "vehicles",
-            "summary",
-            "previous_summary",
-            "observation_history",
             "preferences",
           ),
           e.DB.prepare("DELETE FROM oauth_states"),
@@ -121,11 +158,14 @@ export async function authRoute(
       }),
     );
     await store.audit("oauth_disconnected");
-    return json({
+    const response = json({
       disconnected: true,
       tesla_consent_revocation:
         "Use Tesla account third-party app management to revoke server-side consent.",
     });
+    response.headers.append("Set-Cookie", sessionCookie("", 0));
+    response.headers.append("Set-Cookie", browserCookie("", 0));
+    return response;
   }
   return null;
 }

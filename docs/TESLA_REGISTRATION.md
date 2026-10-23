@@ -23,7 +23,7 @@ Developer Account A owns credentials. Vehicle Account B signs into Tesla during 
 
 After credentials are issued, use `python3 scripts/configure-secrets.py --tesla` locally. This prompts invisibly and stores them in ignored `.dev.vars` with mode 0600. Upload only after deployment approval using `python3 scripts/configure-secrets.py --upload`. Do not paste credentials into chat.
 
-To add location later: grant scope in the developer portal, set ENABLE_LOCATION=true, deploy, disconnect locally and reconnect through OAuth. Tesla supports scope additions with prompt_missing_scopes=true; this service requests that flag. User denial is handled without a connected session. Command scopes require separate explicit Phase G approval.
+To add location later: grant scope in the developer portal, set ENABLE_LOCATION=true, deploy and use Reconnect Tesla Account in the dashboard. Tesla supports scope additions with prompt_missing_scopes=true; this service requests that flag. User denial preserves an existing connection. Command scopes require separate explicit Phase G approval.
 
 Source: [Tesla onboarding](https://developer.tesla.com/docs/fleet-api/getting-started/what-is-fleet-api), [authentication](https://developer.tesla.com/docs/fleet-api/authentication/overview), [third-party tokens](https://developer.tesla.com/docs/fleet-api/authentication/third-party-tokens).
 

@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, afterAll, afterEach, vi } from "vitest";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { generateKeyPairSync } from "node:crypto";
 import app from "../../src/index";
 import { Store } from "../../src/storage/database";
@@ -56,9 +56,12 @@ beforeAll(async () => {
     }),
   );
   const DB = await mf.getD1Database("DB");
-  await DB.exec(
-    readFileSync("migrations/0001_initial.sql", "utf8").replace(/\n/g, " "),
-  );
+  for (const migration of readdirSync("migrations")
+    .filter((file) => file.endsWith(".sql"))
+    .sort())
+    await DB.exec(
+      readFileSync("migrations/" + migration, "utf8").replace(/\n/g, " "),
+    );
   e = {
     DB: DB as unknown as D1Database,
     ASSETS: {

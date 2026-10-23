@@ -16,4 +16,6 @@ The private key remains under ignored `secrets/`; only the generated public key 
 
 Keep the same database and encryption key across deployments. Use separate Worker names, D1 databases and credentials for development/staging. See [security](SECURITY.md) for backup and recovery limitations.
 
+For this reconnection update, apply pending migrations to the existing bound database before deploying the Worker: `npx wrangler d1 migrations apply teslabot-production --remote`. Confirm the intended account/database first. Migration `0002_oauth_purpose.sql` adds a connect/reconnect purpose to OAuth transactions; existing transactions default to connect and cannot replace a connected account. It does not replace the database or its encryption key. Then deploy the Worker and rebuild/reload any local plugin runtime using the updated MCP bundle. The repository update itself does not deploy or migrate production.
+
 Sources: [Custom Domains](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/), [Secrets](https://developers.cloudflare.com/workers/configuration/secrets/), [D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/).

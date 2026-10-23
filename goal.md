@@ -90,7 +90,7 @@ Eventually, the agent might offer: **“It's cold. Want me to warm the cabin to 
 ### Verified against Tesla
 
 - Partner registration and public-key matching.
-- Vehicle-owner OAuth is connected.
+- Vehicle-owner OAuth was previously connected; owner reconnection is currently pending.
 - The authorized account's vehicle-list request succeeded but returned no vehicles. A real local stdio MCP client successfully invoked that tool against the deployed backend.
 - A real MCP battery invocation reached the backend and returned `select_vehicle_first`. No battery value was available. The owner needs to confirm the correct account and vehicle permissions before a battery read can be verified.
 - Deployed health, exact public-key matching, unauthorized-route protection, default history preferences, and MCP restrictions on admin routes have been checked.
@@ -106,7 +106,9 @@ Eventually, the agent might offer: **“It's cold. Want me to warm the cabin to 
 
 ### Still pending
 
-The account-to-agent workflow is now covered by an integrated test using real Worker handlers, local D1 encryption/storage and an MCP client, with only Tesla network responses mocked. It covers connection, explicit selection, battery reads, cache reuse, departure planning, refresh-token rotation and disconnect. All 111 tests pass. This does not substitute for owner sign-in or a live vehicle reading; see [verification details](docs/VERIFICATION.md).
+The account-to-agent workflow is covered by integrated tests using real Worker handlers, local D1 encryption/storage and an MCP client, with only Tesla network responses mocked. They cover connection, recovery from zero vehicles through reconnection and explicit selection, battery reads, cache reuse, departure planning, refresh-token rotation and disconnect. All 132 tests pass. This does not substitute for owner sign-in or a live vehicle reading; see [verification details](docs/VERIFICATION.md).
+
+The October 23 code update adds safe dashboard reconnection, browser OAuth error recovery, explicit metadata reload and actionable empty-vehicle/selection guidance through HTTP and MCP. Successful replacement clears the old account's vehicle data; denied or failed replacement preserves its connection. Vehicle access loss invalidates selection, and authorization failures do not masquerade as cached battery success. Migration/deployment and owner acceptance of this update remain pending; no new live Tesla result is claimed.
 
 - Explicit selection of an authorized vehicle and a verified live battery reading through MCP.
 - Opt-in scheduling/notification setup and a verified ChatGPT tool invocation. Calendar, route and weather inputs have a typed planning interface, but a real combined calendar/weather/Tesla workflow has not been verified. Charger availability and recorded driving efficiency are still absent.

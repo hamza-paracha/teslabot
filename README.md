@@ -44,7 +44,7 @@ The agent supplies calendar, weather and route context. teslabot supplies the ca
 
 ## Where it's at
 
-Still a work in progress. The backend is deployed, the plugin is built, and 111 tests pass, including a full connection-to-agent flow with mocked Tesla responses.
+Still a work in progress. The existing backend is deployed, and 132 tests pass locally, including full connection-to-agent and empty-account recovery flows with mocked Tesla responses. The latest reconnection/discovery update still needs migration, deployment and owner verification.
 
 I haven't verified a real battery reading yet—the last connected account returned no vehicles. A tool call inside ChatGPT and a scheduled proactive notification also still need a live test. The local ChatGPT tunnel needs my Mac to stay online.
 
@@ -56,6 +56,8 @@ You'll need Node.js 22+. The full setup also uses Python 3 and OpenSSL.
 
 ```sh
 npm ci
+# On a fresh checkout; keep any existing operator configuration:
+cp wrangler.example.jsonc wrangler.jsonc
 npm run check
 npm run plugin:build
 ```

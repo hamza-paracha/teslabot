@@ -52,6 +52,11 @@ export class TeslaClient {
     if (!/^\/api\/1\/vehicles(?:$|[/?])/.test(path) || path.includes(".."))
       throw new AppError("invalid_api_path");
     const t = await ownerToken(this.store);
+    if (
+      t.scope !== undefined &&
+      !t.scope.split(/\s+/).includes("vehicle_device_data")
+    )
+      throw new AppError("missing_vehicle_data_scope", 403);
     await this.reserve(category, category === "data" ? 0.002 : 0);
     let r: Response;
     try {
