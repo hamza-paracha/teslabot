@@ -210,6 +210,7 @@ export function normalize(
         (v !== undefined && sections.vehicle.is_stale) ||
         (location && sections.location!.is_stale),
       source: "tesla_fleet_api",
+      cache_hit: false,
       sections,
       already_awake: true as boolean | null,
       may_incur_api_charges: true,

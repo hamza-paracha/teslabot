@@ -60,7 +60,13 @@ export async function tokenRequest(
         : "tesla_token_exchange_failed",
       r.status === 401 ? 401 : 502,
     );
-  const parsed = tokenSchema.safeParse(await r.json());
+  let body: unknown;
+  try {
+    body = await r.json();
+  } catch {
+    throw new AppError("invalid_token_response", 502);
+  }
+  const parsed = tokenSchema.safeParse(body);
   if (!parsed.success) throw new AppError("invalid_token_response", 502);
   return {
     ...parsed.data,

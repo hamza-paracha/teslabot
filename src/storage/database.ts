@@ -15,7 +15,10 @@ export class Store {
   async put(key: string, value: unknown) {
     await this.putMany({ [key]: value });
   }
-  async putMany(values: Record<string, unknown>) {
+  async putMany(
+    values: Record<string, unknown>,
+    extraStatements: D1PreparedStatement[] = [],
+  ) {
     const statements = await Promise.all(
       Object.entries(values).map(async ([key, value]) =>
         this.env.DB.prepare(
@@ -23,7 +26,8 @@ export class Store {
         ).bind(key, await seal(value, this.env.TOKEN_ENCRYPTION_KEY!, key)),
       ),
     );
-    if (statements.length) await this.env.DB.batch(statements);
+    if (statements.length || extraStatements.length)
+      await this.env.DB.batch([...statements, ...extraStatements]);
   }
   async delete(key: string) {
     await this.env.DB.prepare("DELETE FROM records WHERE key=?")
