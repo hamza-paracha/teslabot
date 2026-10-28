@@ -92,7 +92,7 @@ button:hover,
 }
 button:disabled {
   opacity: 0.5;
-  cursor: wait;
+  cursor: not-allowed;
 }
 .secondary {
   background: transparent;
@@ -173,6 +173,7 @@ footer {
 }
 #message {
   color: var(--lime);
+  white-space: pre-line;
 }
 [hidden] {
   display: none !important;
