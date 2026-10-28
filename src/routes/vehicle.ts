@@ -7,6 +7,7 @@ import {
   selectionRequired,
   type VehicleList,
 } from "../tesla/vehicles";
+import { detectRoutines } from "../context/routines";
 import { readiness } from "../context/readiness";
 import { normalize } from "../tesla/normalization";
 import { json, readJson } from "./http";
@@ -68,7 +69,10 @@ export async function vehicleRoute(
     });
     return json(parsed.data);
   }
-  if (p === "/api/vehicle/history" && r.method === "GET") {
+  if (
+    (p === "/api/vehicle/history" || p === "/api/vehicle/routines") &&
+    r.method === "GET"
+  ) {
     return store.locked("vehicle", async () => {
       const preferences =
         (await store.get<Preferences>("preferences")) ?? defaultPreferences;
@@ -99,6 +103,20 @@ export async function vehicleRoute(
       // Remove expired history on access; no scheduled polling or cleanup task is required.
       if (records.length !== observations.length)
         await store.put("observation_history", observations);
+      if (p.endsWith("/routines"))
+        return json({
+          enabled: preferences.history_enabled,
+          ...detectRoutines(
+            observations,
+            selected?.id ?? null,
+            preferences.time_zone,
+          ),
+          data: {
+            retrieved_at: new Date().toISOString(),
+            may_incur_api_charges: false,
+            already_awake: null,
+          },
+        });
       return json({
         enabled: preferences.history_enabled,
         observations,
