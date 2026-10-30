@@ -5,11 +5,23 @@ export type Observation = ReturnType<typeof normalize>;
 export const preferencesSchema = z
   .object({
     history_enabled: z.boolean(),
+    time_zone: z
+      .string()
+      .max(100)
+      .refine((zone) => {
+        try {
+          new Intl.DateTimeFormat("en", { timeZone: zone });
+          return true;
+        } catch {
+          return false;
+        }
+      }, "Use a valid IANA time zone")
+      .optional(),
     battery_change_percentage: z.number().int().min(1).max(50),
     temperature_change_c: z.number().min(1).max(20),
   })
   .strict();
-export const defaultPreferences = {
+export const defaultPreferences: Preferences = {
   history_enabled: false,
   battery_change_percentage: 5,
   temperature_change_c: 3,

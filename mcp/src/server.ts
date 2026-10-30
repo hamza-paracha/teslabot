@@ -10,6 +10,10 @@ import type { Observation } from "../../src/context/observations";
 import { tripSchema } from "../../src/context/observations";
 
 const endpoints = {
+  tesla_get_vehicle_routines: [
+    "/api/vehicle/routines",
+    "Derive low-confidence overnight charging routines and sampled deviations from opt-in stored history only. Makes no Tesla request. Inspect sample size, observed range, configured time zone or explicit UTC fallback and insufficient_data results. Never claim charging did not occur between samples.",
+  ],
   tesla_get_readiness: [
     "/api/vehicle/readiness",
     "Report observed lock, door, window and tire warnings. Missing data is unknown; this is not a safety inspection.",
