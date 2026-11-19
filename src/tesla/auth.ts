@@ -19,8 +19,11 @@ const tokenSchema = z.object({
   refresh_token: z.string().optional(),
   expires_in: z.number().positive(),
   scope: z.string().optional(),
+  id_token: z.string().max(20000).optional(),
 });
-export type Tokens = z.infer<typeof tokenSchema> & { expires_at: number };
+export type Tokens = Omit<z.infer<typeof tokenSchema>, "id_token"> & {
+  expires_at: number;
+};
 export function authorizationUrl(e: Env, state: string) {
   const u = new URL("https://auth.tesla.com/oauth2/v3/authorize");
   u.search = new URLSearchParams({
@@ -68,10 +71,46 @@ export async function tokenRequest(
   }
   const parsed = tokenSchema.safeParse(body);
   if (!parsed.success) throw new AppError("invalid_token_response", 502);
-  return {
-    ...parsed.data,
+  const { id_token, ...grant } = parsed.data;
+  const tokens: Tokens = {
+    ...grant,
     expires_at: Date.now() + parsed.data.expires_in * 1000,
   };
+  // Kept only for identifying the Tesla account; non-enumerable so it is never
+  // serialized into storage.
+  Object.defineProperty(tokens, "id_token", { value: id_token });
+  return tokens;
+}
+
+function claims(jwt: unknown): Record<string, unknown> | null {
+  if (typeof jwt !== "string") return null;
+  try {
+    const part = jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const value = JSON.parse(
+      atob(part.padEnd(Math.ceil(part.length / 4) * 4, "=")),
+    );
+    return value && typeof value === "object" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+// The Tesla account behind a token response. These tokens come straight from
+// Tesla's token endpoint over TLS in exchange for our client secret, so their
+// claims are trusted without a signature check (OIDC Core 3.1.3.7). Prefer the
+// ID token issued to this client; Tesla's access-token subject is the same
+// customer account ID.
+export function teslaSubject(tokens: Tokens, e: Env): string | null {
+  const id = claims((tokens as { id_token?: string }).id_token);
+  const audience = [id?.aud].flat();
+  if (
+    typeof id?.sub === "string" &&
+    id.sub &&
+    audience.includes(e.TESLA_CLIENT_ID)
+  )
+    return id.sub;
+  const access = claims(tokens.access_token);
+  return typeof access?.sub === "string" && access.sub ? access.sub : null;
 }
 export async function ownerToken(store: Store): Promise<Tokens> {
   let t = await store.get<Tokens>("owner_tokens");

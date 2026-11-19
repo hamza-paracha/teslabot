@@ -27,11 +27,30 @@ For opted-in checks, supply `delivery` with the user's IANA `time_zone`, quiet-h
 
 When the user gives a place and asks whether the car can make it, confirm the origin and resolve ambiguous destinations. Use the host's authorized driving-route tool to obtain the outbound distance and, ideally, a separate return route. Do not use straight-line distance. Ask for the starting city/location if it is unavailable; do not share precise Tesla coordinates with another service without permission.
 
-Call `tesla_assess_destination` with the destination label, confirmed origin, route source and outbound/return distances. It may fetch authorized Tesla data, so normal usage charges can apply. Present the one-way arrival estimate and the percentage after returning separately, together with the selected reserve. Report whether the return distance was assumed and whether the battery reading is fresh. Assume no charging between legs unless a separately assessed plan says otherwise. Missing or stale data cannot support a confident yes. Do not claim an arrival percentage for a route beyond the reported range.
+Call `tesla_plan_trip` with the destination label, confirmed origin, route source, ordered `legs` (one per stop, each with its routed driving distance) and `return_distance_km` when the user is coming back. Keep the returned `trip_id` for the rest of the conversation. On every follow-up, pass that `trip_id` with only what changed:
+
+- an added stop means new `legs` from the routing tool;
+- a different reserve means `reserve_percentage`;
+- “I have 30 minutes to plug in” means `charging` with usable capacity from the user or a verified source, the charger's power, and `available_minutes`.
+
+Answer from the response:
+
+- the battery left after each leg and at the end;
+- `minimum_departure_percentage`, the lowest charge to leave with and still keep the reserve;
+- the shortfall;
+- with charging details, `minutes_needed_for_reserve` and what the window gets the user.
+
+Turn this into a recommendation: “Plug in for about 45 minutes before you leave,” or “30 minutes gets you to 34%, about 20 km more, but you'd still be short.” If `charge_limit_must_be_raised` is true, say the limit has to be raised in the Tesla app; this tool cannot change it. Missing or stale data cannot support a confident yes.
+
+After the user has driven a planned trip, offer to record how it went with `tesla_record_trip_outcome`, using the battery percentage they report. These outcomes calibrate later estimates.
+
+## Server-side briefings
+
+If the user wants departure heads-ups even when you are not running, pass their opted-in driving events to `tesla_schedule_briefings`. Each needs a stable event id, a short title, the departure time (event start minus routed travel time) and the total driving distance. Re-send an event whenever it moves and send `cancelled: true` when it is cancelled or declined. Check `delivery.active` in the response; if it is false, tell the user to enable alerts and set a notification destination in the teslabot dashboard. Never claim a briefing will arrive when delivery is inactive.
 
 ## Vehicle attention and charging plans
 
-Use `tesla_get_readiness` when the user asks what needs attention, or inspect the cached attention report included in departure planning. Report observed tire flags, unlocked state and open doors/windows/trunks with timestamps. Missing sensors are unknown. Never describe a clean report as a safety inspection or advise a tire pressure from an invented threshold.
+For any status question (“How's the car?”, battery, charging, climate, doors, tires, what changed), make one `tesla_get_snapshot` call, requesting only the needed `sections` when the question is narrow; do not call it repeatedly for each field. Use its `readiness` section when the user asks what needs attention, or inspect the cached attention report included in departure planning. Report observed tire flags, unlocked state and open doors/windows/trunks with timestamps. Missing sensors are unknown. Never describe a clean report as a safety inspection or advise a tire pressure from an invented threshold.
 
 For “How long or how much to charge to 80%?”, use `tesla_plan_charging`. Obtain usable battery capacity from the user or a verified source; do not guess from model/trim or infer battery health. Use the actual electricity tariff and charger input power when supplied. If absent, cost or duration may be unavailable. State the efficiency and constant-power assumptions, and never claim a historical bill or change the charge limit.
 

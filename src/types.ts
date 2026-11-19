@@ -14,6 +14,14 @@ export interface Env {
   MAX_REQUESTS_PER_DAY: string;
   MAX_ESTIMATED_MONTHLY_SPEND_USD: string;
   CACHE_TTL_SECONDS: string;
+  // Fleet Telemetry (optional): relay credential, server identity and the
+  // service binding to the telemetry Worker that signs vehicle configs.
+  TELEMETRY_INGEST_TOKEN?: string;
+  TELEMETRY_HOSTNAME?: string;
+  TELEMETRY_PORT?: string;
+  TELEMETRY_CA?: string;
+  TELEMETRY?: Fetcher;
+  TELEMETRY_RELAY_TOKEN?: string;
 }
 export class AppError extends Error {
   constructor(

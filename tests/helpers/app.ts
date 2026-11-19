@@ -88,11 +88,21 @@ beforeAll(async () => {
   store = new Store(e);
 });
 beforeEach(async () => {
-  await e.DB.batch(
-    ["records", "oauth_states", "sessions", "locks", "usage", "audit"].map(
-      (t) => e.DB.prepare("DELETE FROM " + t),
-    ),
-  );
+  await e.DB.batch([
+    ...[
+      "records",
+      "oauth_states",
+      "sessions",
+      "locks",
+      "usage",
+      "audit",
+      "invites",
+      "mcp_tokens",
+      "telemetry_vehicles",
+    ].map((t) => e.DB.prepare("DELETE FROM " + t)),
+    e.DB.prepare("DELETE FROM accounts WHERE id<>''"),
+    e.DB.prepare("UPDATE accounts SET disabled=0, tesla_sub_hash=NULL"),
+  ]);
 });
 afterEach(() => vi.unstubAllGlobals());
 afterAll(async () => mf.dispose());

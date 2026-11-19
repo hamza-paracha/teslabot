@@ -30,6 +30,23 @@ Additional protected endpoints:
 - `GET /api/vehicle/history`: optional stored observations; no Tesla requests.
 - `GET /api/vehicle/trip?distance_km=100&reserve_percentage=20`: an estimate using the caller's total distance and Tesla's reported range. It does not plan a route or guarantee reachability.
 - `GET/POST /admin/preferences`: administrator-only opt-in history and change thresholds. Disabling history deletes its stored samples.
+- `POST /api/trips`: create or update a trip plan (`trip_id` for follow-ups); returns the leg-by-leg assessment. `GET /api/trips` lists saved trips and outcomes for the selected vehicle.
+- `POST /api/trips/outcome`: record actual battery use for a saved trip and return accuracy and calibration.
+- `GET/POST /api/briefings`: list or upsert upcoming departure briefings (moved events reschedule, `cancelled` removes).
+- `GET/POST /admin/alerts`: administrator-only alert settings (time zone, ntfy/JSON destination, plug-in reminder, briefing lead time and reserve). The destination URL is stored encrypted and only its host is returned. `POST /admin/alerts/test` sends a test notification.
+- `POST/GET /mcp`: hosted Streamable HTTP MCP endpoint; bearer credential required.
+
+Accounts and live data:
+
+- `GET /auth/signin`, `GET /auth/signup?invite=CODE`: public; start Tesla sign-in for an existing driver or an invite. Unknown Tesla accounts are refused at the callback.
+- `POST/GET /admin/invites`, `POST /admin/invites/revoke`, `GET /admin/accounts`, `POST /admin/accounts/disable`, `POST /admin/accounts/delete`: operator only.
+- `GET/POST /account/mcp-tokens`, `POST /account/mcp-tokens/revoke`, `POST /account/delete`: the signed-in driver's own credentials and account.
+- `GET /api/telemetry` (`?check=true` asks Tesla), `POST /api/telemetry/enable`, `POST /api/telemetry/disable`: live data for the selected car.
+- `POST /telemetry/ingest`: the telemetry relay only (`TELEMETRY_INGEST_TOKEN`).
+
+Every route acts on the caller's own account: the operator's for `ADMIN_TOKEN`, sessions and `MCP_TOKEN`, a driver's for their session and `tbm_` credentials.
+
+The MCP bearer may POST only to `/api/trips`, `/api/trips/outcome` and `/api/briefings`. It cannot reach vehicle selection, account, preference or alert-settings routes.
 
 Responses include retrieved/observed timestamps, stale status, awake information and potential API charges. API failures contain stable codes without upstream sensitive details. Vehicle metadata/cache records are encrypted; VINs are used only server-side. Always inspect stale flags before answering “right now.”
 

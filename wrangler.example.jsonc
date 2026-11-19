@@ -4,6 +4,8 @@
   "compatibility_date": "2026-10-18",
   "routes": [{ "pattern": "tesla.example.com", "custom_domain": true }],
   "workers_dev": false,
+  // Checks due alerts every 10 minutes; it does nothing until alerts are enabled.
+  "triggers": { "crons": ["*/10 * * * *"] },
   "preview_urls": false,
   "assets": {
     "directory": "public",
@@ -20,6 +22,10 @@
     "CACHE_TTL_SECONDS": "300",
     "APP_ORIGIN": "https://tesla.example.com",
   },
+  // Optional live data (docs/TELEMETRY_SETUP.md). Secrets: TELEMETRY_CA,
+  // TELEMETRY_RELAY_TOKEN, TELEMETRY_INGEST_TOKEN.
+  // "services": [{ "binding": "TELEMETRY", "service": "teslabot-telemetry" }],
+  // and in "vars": "TELEMETRY_HOSTNAME": "telemetry.example.com", "TELEMETRY_PORT": "443"
   "d1_databases": [
     {
       "binding": "DB",

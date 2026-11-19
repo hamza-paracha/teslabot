@@ -11,24 +11,26 @@ type Selection = { id: string; vin: string };
 export const vehicleId = async (vehicle: Vehicle) =>
   (await hash(vehicle.vin)).slice(0, 24);
 
+export const VEHICLE_KEYS = [
+  "selected",
+  "summary",
+  "previous_summary",
+  "observation_history",
+  "vehicles",
+  "trips",
+  "briefings",
+  "alert_state",
+  "telemetry_state",
+];
 export function clearVehicleData(store: Store) {
-  return store.env.DB.prepare(
-    "DELETE FROM records WHERE key IN (?,?,?,?,?)",
-  ).bind(
-    "selected",
-    "summary",
-    "previous_summary",
-    "observation_history",
-    "vehicles",
-  );
+  return store.deleteKeys(VEHICLE_KEYS);
 }
 
 // A status read uses stored metadata only; it never contacts or wakes a vehicle.
 export async function vehicleAccess(store: Store) {
-  const [list, selected] = await Promise.all([
-    store.get<VehicleList>("vehicles"),
-    store.get<Selection>("selected"),
-  ]);
+  const stored = await store.getMany(["vehicles", "selected"]);
+  const list: VehicleList | null = stored.vehicles,
+    selected: Selection | null = stored.selected;
   const vehicles = await Promise.all(
     (list?.vehicles ?? []).map(async (v) => ({
       id: await vehicleId(v),
@@ -74,14 +76,12 @@ export async function discoverVehicles(store: Store, refresh: boolean) {
       { vehicles: { vehicles: list, at: Date.now() } },
       selected && !ids.includes(selected.id)
         ? [
-            store.env.DB.prepare(
-              "DELETE FROM records WHERE key IN (?,?,?,?)",
-            ).bind(
+            store.deleteKeys([
               "selected",
               "summary",
               "previous_summary",
               "observation_history",
-            ),
+            ]),
           ]
         : [],
     );

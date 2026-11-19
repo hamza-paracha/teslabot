@@ -17,7 +17,7 @@ For this project, that means questions like:
 - “What changed since I last checked the car?”
 - “How long would it take to charge to 80%?”
 
-There are 17 read-only tools covering battery, charging, climate, vehicle status, location, changes between readings and trip planning. The [full tool list and setup](docs/MCP_SETUP.md) are in the docs.
+There are 8 tools, and none of them can control the car. One `tesla_get_snapshot` call covers battery, charging, climate, doors/windows, tires, location, attention items and changes between readings. `tesla_plan_trip` keeps a trip across follow-up questions: add a stop, change the reserve, ask how long you'd need to plug in. It works backward to the lowest charge you can leave with. The others cover vehicle selection, history, recording how a planned trip actually went, scheduling departure briefings, charging cost and departure planning. The [full tool list and setup](docs/MCP_SETUP.md) are in the docs.
 
 ## The proactive part
 
@@ -27,7 +27,11 @@ For example: tomorrow morning is cold, I have somewhere to be, and the car might
 
 The planner covers departure times, battery reserve checks and cold-weather suggestions. It also handles quiet hours and repeated suggestions. The calendar, weather and directions come from whichever tools the agent already uses.
 
-The host agent manages scheduling and notification delivery. The integration uses read-only vehicle access.
+teslabot can also message you itself, even when no assistant is running. A cron trigger sends an evening plug-in reminder when the car is low and unplugged. It also sends a heads-up before drives your assistant has handed over with `tesla_schedule_briefings`. A moved appointment moves its check; a cancelled one drops it. Notifications go to an ntfy topic or a JSON webhook you set in the dashboard; alerts are off until you enable them. Vehicle access stays read-only.
+
+## Invite-only, live data
+
+teslabot is invite-only. The operator sends single-use invite links, and each driver signs in with Tesla and gets their own car, data, alerts and assistant credentials ([invites](docs/INVITES.md)). With Fleet Telemetry on Cloudflare Containers, cars stream changes as they happen instead of being polled ([live data](docs/TELEMETRY_SETUP.md)).
 
 ## Architecture
 
@@ -37,8 +41,9 @@ Agent → MCP server → Cloudflare Worker → Tesla Fleet API
 
 - **TypeScript** for the backend, planning logic and MCP tools.
 - **Cloudflare Workers + D1** for the API and encrypted token storage.
-- **Tesla OAuth** to connect the account without handling a Tesla password.
-- **MCP** to keep it usable across different agents, with a ChatGPT tunnel option and a local MCP server for compatible clients.
+- **Tesla OAuth** to connect the account without handling a Tesla password, and as the sign-in for invited drivers.
+- **Cloudflare Containers + Spectrum** for the optional Fleet Telemetry server.
+- **MCP** to keep it usable across different agents: a hosted Streamable HTTP endpoint at `/mcp` on the Worker, plus a local stdio server for compatible clients.
 
 The agent supplies calendar, weather and route context. teslabot supplies the car data. Readings are cached to avoid unnecessary requests, and it doesn't automatically wake the car. Tesla API usage can cost money.
 

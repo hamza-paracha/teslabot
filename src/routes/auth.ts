@@ -2,98 +2,267 @@ import type { Env } from "../types";
 import { AppError } from "../types";
 import { Store } from "../storage/database";
 import { hash, random } from "../security/crypto";
-import { cookie, makeSession, sessionCookie } from "../security/authorization";
+import {
+  cookie,
+  makeSession,
+  sessionCookie,
+  type Principal,
+} from "../security/authorization";
 import {
   authorizationUrl,
   regions,
   scopes,
+  teslaSubject,
   tokenRequest,
   type Tokens,
 } from "../tesla/auth";
 import { json } from "./http";
 import { clearVehicleData, vehicleAccess } from "../tesla/vehicles";
 
+type Purpose = "connect" | "reconnect" | "signup" | "signin";
 const redirect = (path: string, headers: HeadersInit = {}) =>
   new Response(null, { status: 303, headers: { Location: path, ...headers } });
 const browserCookie = (value: string, age = 600) =>
   `__Host-ev_oauth=${value}; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=${age}`;
+export const newAccountId = () => random().replace(/-/g, "").slice(0, 24);
+
+// Begin a browser-bound Tesla authorization. connect/reconnect belong to an
+// existing account; signup carries an invite and signin carries nothing.
+async function begin(
+  e: Env,
+  purpose: Purpose,
+  account: Principal | null,
+  inviteHash: string | null = null,
+) {
+  const state = random(),
+    browser = random();
+  await e.DB.batch([
+    e.DB.prepare("DELETE FROM oauth_states WHERE expires<?").bind(Date.now()),
+    e.DB.prepare(
+      "INSERT INTO oauth_states(hash,browser_hash,expires,purpose,account,role,invite_hash) VALUES(?,?,?,?,?,?,?)",
+    ).bind(
+      await hash(state),
+      await hash(browser),
+      Date.now() + 600000,
+      purpose,
+      account?.account ?? null,
+      account?.role ?? null,
+      inviteHash,
+    ),
+  ]);
+  return { url: authorizationUrl(e, state), browser };
+}
+
+// Public routes: anyone can start Tesla sign-in, but only an existing account or
+// a valid invite can complete it.
+export async function publicAuthRoute(
+  r: Request,
+  e: Env,
+): Promise<Response | null> {
+  const u = new URL(r.url);
+  if (r.method !== "GET") return null;
+  if (u.pathname !== "/auth/signin" && u.pathname !== "/auth/signup")
+    return null;
+  if (!e.TESLA_CLIENT_ID || !e.TESLA_CLIENT_SECRET)
+    throw new AppError("tesla_credentials_missing", 503);
+  let inviteHash: string | null = null;
+  if (u.pathname === "/auth/signup") {
+    const code = u.searchParams.get("invite") ?? "";
+    if (!/^[a-f0-9]{32,64}$/.test(code)) throw new AppError("invite_invalid");
+    inviteHash = await hash(code);
+    const invite = await e.DB.prepare(
+      "SELECT hash FROM invites WHERE hash=? AND used_at IS NULL AND expires>?",
+    )
+      .bind(inviteHash, Date.now())
+      .first();
+    if (!invite) throw new AppError("invite_invalid", 403);
+  }
+  const { url, browser } = await begin(
+    e,
+    inviteHash ? "signup" : "signin",
+    null,
+    inviteHash,
+  );
+  return redirect(url, { "Set-Cookie": browserCookie(browser) });
+}
 
 // Public callback: the one-use, browser-bound OAuth transaction authorizes it.
 export async function oauthCallback(
   r: Request,
   e: Env,
-  store: Store,
+  ctx?: ExecutionContext,
 ): Promise<Response> {
   const u = new URL(r.url);
   const state = u.searchParams.get("state"),
     browser = cookie(r, "__Host-ev_oauth");
   if (!state || !browser) throw new AppError("invalid_oauth_state");
-  const session = await store.locked("vehicle", () =>
-    store.locked("account", async () => {
-      // Consume state under the same locks as disconnect/replacement. A completed
-      // disconnect must invalidate every pending sign-in, including callbacks.
-      const transaction = await e.DB.prepare(
-        "DELETE FROM oauth_states WHERE hash=? AND browser_hash=? AND expires>? RETURNING purpose",
+  const transaction = await e.DB.prepare(
+    "DELETE FROM oauth_states WHERE hash=? AND browser_hash=? AND expires>? RETURNING purpose, account, role, invite_hash",
+  )
+    .bind(await hash(state), await hash(browser), Date.now())
+    .first<{
+      purpose: Purpose;
+      account: string | null;
+      role: "operator" | "user" | null;
+      invite_hash: string | null;
+    }>();
+  if (!transaction) throw new AppError("expired_or_replayed_state");
+  if (u.searchParams.has("error")) throw new AppError("oauth_consent_denied");
+  const code = u.searchParams.get("code");
+  if (!code || code.length > 4096)
+    throw new AppError("missing_authorization_code");
+  // Fail before exchanging the code: a plain connect never replaces an account.
+  if (
+    transaction.purpose === "connect" &&
+    (await new Store(e, ctx, transaction.account ?? "").get("owner_tokens"))
+  )
+    throw new AppError("disconnect_before_reconnecting", 409);
+  const tokens = await tokenRequest({
+    grant_type: "authorization_code",
+    client_id: e.TESLA_CLIENT_ID!,
+    client_secret: e.TESLA_CLIENT_SECRET!,
+    code,
+    audience: regions[e.TESLA_REGION],
+    redirect_uri: e.APP_ORIGIN + "/auth/callback",
+  });
+  if (!tokens.refresh_token) throw new AppError("missing_refresh_token", 502);
+  const subject = teslaSubject(tokens, e);
+  const subjectHash = subject ? await hash("tesla:" + subject) : null;
+  const linked = subjectHash
+    ? await e.DB.prepare(
+        "SELECT id, disabled FROM accounts WHERE tesla_sub_hash=?",
       )
-        .bind(await hash(state), await hash(browser), Date.now())
-        .first<{ purpose: string }>();
-      if (!transaction) throw new AppError("expired_or_replayed_state");
-      if (u.searchParams.has("error"))
-        throw new AppError("oauth_consent_denied");
-      const code = u.searchParams.get("code");
-      if (!code || code.length > 4096)
-        throw new AppError("missing_authorization_code");
-      if (
-        transaction.purpose !== "reconnect" &&
-        (await store.get("owner_tokens"))
-      )
-        throw new AppError("disconnect_before_reconnecting", 409);
-      const tokens = await tokenRequest({
-        grant_type: "authorization_code",
-        client_id: e.TESLA_CLIENT_ID!,
-        client_secret: e.TESLA_CLIENT_SECRET!,
-        code,
-        audience: regions[e.TESLA_REGION],
-        redirect_uri: e.APP_ORIGIN + "/auth/callback",
-      });
-      if (!tokens.refresh_token)
-        throw new AppError("missing_refresh_token", 502);
-      // Commit the replacement and cleanup together, only after a valid token exchange.
-      await store.putMany({ owner_tokens: tokens }, [
-        clearVehicleData(store),
-        e.DB.prepare("DELETE FROM records WHERE key='preferences'"),
-        e.DB.prepare("DELETE FROM sessions"),
-        e.DB.prepare("DELETE FROM oauth_states"),
+        .bind(subjectHash)
+        .first<{ id: string; disabled: number }>()
+    : null;
+  let account: string, role: "operator" | "user";
+  if (
+    transaction.purpose === "connect" ||
+    transaction.purpose === "reconnect"
+  ) {
+    account = transaction.account ?? "";
+    role = transaction.role ?? "operator";
+    if (linked && linked.id !== account)
+      throw new AppError("tesla_account_already_linked", 409);
+    await connect(
+      e,
+      new Store(e, ctx, account),
+      tokens,
+      transaction.purpose,
+      subjectHash,
+    );
+  } else {
+    if (!subjectHash) throw new AppError("tesla_identity_unavailable", 502);
+    if (linked) {
+      // An existing driver signing in again, even through an invite link.
+      if (linked.disabled) throw new AppError("account_disabled", 403);
+      account = linked.id;
+      await signIn(new Store(e, ctx, account), tokens);
+    } else if (transaction.purpose === "signup" && transaction.invite_hash) {
+      account = newAccountId();
+      const now = Date.now();
+      // Creating the account and consuming the invite commit together; a used
+      // or expired invite creates nothing.
+      const [created, used] = await e.DB.batch([
+        e.DB.prepare(
+          "INSERT INTO accounts(id,tesla_sub_hash,label,created) SELECT ?,?,label,? FROM invites WHERE hash=? AND used_at IS NULL AND expires>?",
+        ).bind(account, subjectHash, now, transaction.invite_hash, now),
+        e.DB.prepare(
+          "UPDATE invites SET used_at=?, account=? WHERE hash=? AND used_at IS NULL AND expires>? AND EXISTS (SELECT 1 FROM accounts WHERE id=?)",
+        ).bind(now, account, transaction.invite_hash, now, account),
       ]);
-      await store.audit("oauth_connected");
-      return makeSession(e);
-    }),
-  );
+      if (!created.meta.changes || !used.meta.changes)
+        throw new AppError("invite_invalid", 403);
+      const store = new Store(e, ctx, account);
+      await store.put("owner_tokens", tokens);
+      await store.audit("account_created");
+    } else throw new AppError("invite_required", 403);
+    role = "user";
+  }
+  const session = await makeSession(e, account, role);
   const response = redirect("/?oauth=connected");
   response.headers.append("Set-Cookie", browserCookie("", 0));
   response.headers.append("Set-Cookie", sessionCookie(session));
   return response;
 }
 
-// Called only after the central administrator and same-origin checks.
+async function connect(
+  e: Env,
+  store: Store,
+  tokens: Tokens,
+  purpose: "connect" | "reconnect",
+  subjectHash: string | null,
+) {
+  await store.locked("vehicle", () =>
+    store.locked("account", async () => {
+      const account = await e.DB.prepare(
+        "SELECT disabled FROM accounts WHERE id=?",
+      )
+        .bind(store.account)
+        .first<{ disabled: number }>();
+      if (!account || account.disabled)
+        throw new AppError("account_disabled", 403);
+      if (purpose !== "reconnect" && (await store.get("owner_tokens")))
+        throw new AppError("disconnect_before_reconnecting", 409);
+      // Commit the replacement and cleanup together, only after a valid token exchange.
+      await store.putMany({ owner_tokens: tokens }, [
+        clearVehicleData(store),
+        store.deleteKeys(["preferences", "alert_settings"]),
+        e.DB.prepare("DELETE FROM sessions WHERE account=?").bind(
+          store.account,
+        ),
+        e.DB.prepare("DELETE FROM oauth_states WHERE account=?").bind(
+          store.account,
+        ),
+        e.DB.prepare("DELETE FROM telemetry_vehicles WHERE account=?").bind(
+          store.account,
+        ),
+        ...(subjectHash
+          ? [
+              e.DB.prepare(
+                "UPDATE accounts SET tesla_sub_hash=? WHERE id=?",
+              ).bind(subjectHash, store.account),
+            ]
+          : []),
+      ]);
+      await store.audit("oauth_connected");
+    }),
+  );
+}
+
+// Same Tesla identity signing in again: refresh the grant, keep the car's data.
+async function signIn(store: Store, tokens: Tokens) {
+  await store.locked(
+    "account",
+    async () => {
+      await store.put("owner_tokens", tokens);
+      await store.audit("signed_in");
+    },
+    10000,
+  );
+}
+
+// Called only after the central owner and same-origin checks.
 export async function authRoute(
   r: Request,
   e: Env,
   store: Store,
+  principal: Principal,
 ): Promise<Response | null> {
   const p = new URL(r.url).pathname;
   if (p === "/auth/status" && r.method === "GET") {
-    const tokens = await store.get<Tokens>("owner_tokens"),
-      selected = await store.get<{ id: string }>("selected");
+    const stored = await store.getMany(["owner_tokens", "selected"]);
+    const tokens: Tokens | null = stored.owner_tokens;
     const usage = await e.DB.prepare(
-      "SELECT category,SUM(count) AS requests,SUM(estimated_usd) AS estimated_usd FROM usage WHERE month=? GROUP BY category",
+      "SELECT category,SUM(count) AS requests,SUM(estimated_usd) AS estimated_usd FROM usage WHERE account=? AND month=? GROUP BY category",
     )
-      .bind(new Date().toISOString().slice(0, 7))
+      .bind(store.account, new Date().toISOString().slice(0, 7))
       .all();
     return json({
+      role: principal.role,
       configured: !!(e.TESLA_CLIENT_ID && e.TESLA_CLIENT_SECRET),
       connected: !!tokens,
-      vehicle_selected: !!selected,
+      vehicle_selected: !!stored.selected,
       vehicle_access: await vehicleAccess(store),
       authorization: {
         requested_scopes: scopes(e),
@@ -104,10 +273,14 @@ export async function authRoute(
               ? "granted"
               : "missing",
       },
-      partner: (await store.get("partner_status")) ?? "unverified",
+      partner:
+        principal.role === "operator"
+          ? ((await store.get("partner_status")) ?? "unverified")
+          : undefined,
       virtual_key: "unverified",
       commands_enabled: false,
       location_enabled: e.ENABLE_LOCATION === "true",
+      telemetry_available: !!(e.TELEMETRY && e.TELEMETRY_HOSTNAME),
       usage: usage.results,
     });
   }
@@ -119,41 +292,33 @@ export async function authRoute(
       throw new AppError("tesla_credentials_missing", 503);
     if (p === "/auth/login" && (await store.get("owner_tokens")))
       throw new AppError("disconnect_before_reconnecting", 409);
-    const state = random(),
-      browser = random();
-    await e.DB.prepare("DELETE FROM oauth_states WHERE expires<?")
-      .bind(Date.now())
-      .run();
-    await e.DB.prepare(
-      "INSERT INTO oauth_states(hash,browser_hash,expires,purpose) VALUES(?,?,?,?)",
-    )
-      .bind(
-        await hash(state),
-        await hash(browser),
-        Date.now() + 600000,
-        p === "/auth/reconnect" ? "reconnect" : "connect",
-      )
-      .run();
+    const { url, browser } = await begin(
+      e,
+      p === "/auth/reconnect" ? "reconnect" : "connect",
+      principal,
+    );
     if (p === "/auth/reconnect") {
-      const response = json({ authorization_url: authorizationUrl(e, state) });
+      const response = json({ authorization_url: url });
       response.headers.set("Set-Cookie", browserCookie(browser));
       return response;
     }
-    return redirect(authorizationUrl(e, state), {
-      "Set-Cookie": browserCookie(browser),
-    });
+    return redirect(url, { "Set-Cookie": browserCookie(browser) });
   }
   if (p === "/auth/disconnect" && r.method === "POST") {
     await store.locked("vehicle", () =>
       store.locked("account", async () => {
         await e.DB.batch([
           clearVehicleData(store),
-          e.DB.prepare("DELETE FROM records WHERE key IN (?,?)").bind(
-            "owner_tokens",
-            "preferences",
+          store.deleteKeys(["owner_tokens", "preferences", "alert_settings"]),
+          e.DB.prepare("DELETE FROM oauth_states WHERE account=?").bind(
+            store.account,
           ),
-          e.DB.prepare("DELETE FROM oauth_states"),
-          e.DB.prepare("DELETE FROM sessions"),
+          e.DB.prepare("DELETE FROM sessions WHERE account=?").bind(
+            store.account,
+          ),
+          e.DB.prepare("DELETE FROM telemetry_vehicles WHERE account=?").bind(
+            store.account,
+          ),
         ]);
       }),
     );

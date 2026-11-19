@@ -61,7 +61,7 @@ describe("account-to-agent workflow with mocked Tesla and real D1 storage", () =
         guidance: { dashboard_url: origin + "/" },
       });
       const unavailable = await client.callTool({
-        name: "tesla_get_battery",
+        name: "tesla_get_snapshot",
         arguments: {},
       });
       expect(unavailable.isError).toBe(true);
@@ -98,7 +98,7 @@ describe("account-to-agent workflow with mocked Tesla and real D1 storage", () =
       });
       expect(discovery.vehicles).toHaveLength(1);
       expect(
-        (await client.callTool({ name: "tesla_get_battery", arguments: {} }))
+        (await client.callTool({ name: "tesla_get_snapshot", arguments: {} }))
           .structuredContent,
       ).toMatchObject({
         error: { code: "select_vehicle_first", dashboard_url: origin + "/" },
@@ -124,7 +124,7 @@ describe("account-to-agent workflow with mocked Tesla and real D1 storage", () =
         ).status,
       ).toBe(200);
       const battery = await client.callTool({
-        name: "tesla_get_battery",
+        name: "tesla_get_snapshot",
         arguments: {},
       });
       expect(battery.isError).toBe(false);
@@ -247,20 +247,23 @@ describe("account-to-agent workflow with mocked Tesla and real D1 storage", () =
     await client.connect(b);
     try {
       const battery = await client.callTool({
-        name: "tesla_get_battery",
+        name: "tesla_get_snapshot",
         arguments: {},
       });
       expect(battery.isError).not.toBe(true);
       expect((battery.structuredContent as any).battery.percentage).toBe(71);
       const requests = upstream.mock.calls.length;
-      await client.callTool({ name: "tesla_get_battery", arguments: {} });
+      await client.callTool({ name: "tesla_get_snapshot", arguments: {} });
       const trip = await client.callTool({
-        name: "tesla_estimate_trip",
-        arguments: { distance_km: 100 },
+        name: "tesla_plan_trip",
+        arguments: {
+          destination: "Fixture destination",
+          legs: [{ to: "Fixture destination", distance_km: 50 }],
+          return_distance_km: 50,
+        },
       });
-      expect((trip.structuredContent as any).assessment).toBe(
-        "within_reported_range_estimate",
-      );
+      expect(trip.isError).toBe(false);
+      expect((trip.structuredContent as any).assessment).toBe("within_reserve");
       const now = Date.now();
       const departure = await client.callTool({
         name: "tesla_plan_departures",
@@ -318,7 +321,7 @@ describe("account-to-agent workflow with mocked Tesla and real D1 storage", () =
       await store.put("owner_tokens", { ...tokens(), expires_at: 0 });
       await e.DB.prepare("DELETE FROM records WHERE key='summary'").run();
       const refreshed = await client.callTool({
-        name: "tesla_get_battery",
+        name: "tesla_get_snapshot",
         arguments: {},
       });
       expect(refreshed.isError).not.toBe(true);
@@ -331,7 +334,7 @@ describe("account-to-agent workflow with mocked Tesla and real D1 storage", () =
       expect((await browserReq("/auth/status")).status).toBe(401);
       expect(await store.get("owner_tokens")).toBeNull();
       expect(
-        (await client.callTool({ name: "tesla_get_battery", arguments: {} }))
+        (await client.callTool({ name: "tesla_get_snapshot", arguments: {} }))
           .isError,
       ).toBe(true);
     } finally {

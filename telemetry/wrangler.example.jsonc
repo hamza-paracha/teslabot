@@ -1,0 +1,30 @@
+// Copy to telemetry/wrangler.jsonc and deploy with:
+//   npx wrangler deploy --config telemetry/wrangler.jsonc
+// Requires Docker locally to build the container image. See docs/TELEMETRY_SETUP.md.
+{
+  "name": "teslabot-telemetry",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-18",
+  // Reached only by the main Worker's service binding and by Spectrum.
+  "workers_dev": false,
+  "preview_urls": false,
+  "containers": [
+    {
+      "class_name": "TelemetryServer",
+      "image": "./container/Dockerfile",
+      "max_instances": 1,
+      "instance_type": "basic",
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "TELEMETRY_SERVER", "class_name": "TelemetryServer" },
+    ],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TelemetryServer"] }],
+  "vars": {
+    "INGEST_URL": "https://tesla.example.com/telemetry/ingest",
+  },
+  // Secrets (wrangler secret put --config telemetry/wrangler.jsonc NAME):
+  //   TLS_CERT, TLS_KEY, FLEET_PRIVATE_KEY, INGEST_TOKEN, RELAY_TOKEN
+}

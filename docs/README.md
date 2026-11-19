@@ -9,6 +9,8 @@ Start with the [project README](../README.md) for use cases and the tool list.
 3. [Account connection](OAUTH_SETUP.md) — sign in, select a car and reconnect safely.
 4. [ChatGPT](CHATGPT_SETUP.md) or [local MCP clients](MCP_SETUP.md) — connect your agent.
 5. [Proactive workflow](PROACTIVE_PLUGIN.md) — calendar context, quiet hours and opt-in delivery.
+6. [Invite-only accounts](INVITES.md) — inviting drivers, assistant credentials and limits.
+7. [Live data](TELEMETRY_SETUP.md) — Fleet Telemetry on Cloudflare Containers.
 
 ## Development and operation
 

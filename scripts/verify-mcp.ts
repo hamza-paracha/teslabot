@@ -12,13 +12,12 @@ const tool =
 if (
   ![
     "tesla_get_vehicles",
-    "tesla_get_battery",
-    "tesla_get_vehicle_context",
+    "tesla_get_snapshot",
     "tesla_plan_departures",
   ].includes(tool)
 )
   throw Error(
-    "Choose tesla_get_vehicles, tesla_get_battery, tesla_get_vehicle_context or tesla_plan_departures",
+    "Choose tesla_get_vehicles, tesla_get_snapshot or tesla_plan_departures",
   );
 if (refresh && tool !== "tesla_get_vehicles")
   throw Error("--refresh is supported only for vehicle-list metadata");

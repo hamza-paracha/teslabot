@@ -19,20 +19,33 @@
         <p>Secure access to your Tesla. On your terms.</p>
       </div>
       <section id="login">
-        <h2>Administrator access</h2>
-        <p>
-          Enter your local administrator credential to open a secure one-hour
-          session.
-        </p>
-        <form id="login-form">
-          <label for="credential">Administrator credential</label
-          ><input
-            id="credential"
-            type="password"
-            autocomplete="off"
-            required
-          /><button>Open dashboard</button>
-        </form>
+        <div id="invite" hidden>
+          <h2>You're invited</h2>
+          <p>
+            Accept with the Tesla account that shows your car in the Tesla app.
+            teslabot only reads vehicle data; it cannot control the car.
+          </p>
+          <button id="accept-invite">Accept with Tesla</button>
+        </div>
+        <h2>Sign in</h2>
+        <p>Already invited? Sign in with the same Tesla account.</p>
+        <button id="tesla-signin" class="secondary">Sign in with Tesla</button>
+        <details>
+          <summary>Operator access</summary>
+          <p>
+            Enter the installation's administrator credential to open a secure
+            one-hour session.
+          </p>
+          <form id="login-form">
+            <label for="credential">Administrator credential</label
+            ><input
+              id="credential"
+              type="password"
+              autocomplete="off"
+              required
+            /><button>Open dashboard</button>
+          </form>
+        </details>
       </section>
       <div id="dashboard" hidden>
         <section>
@@ -59,6 +72,9 @@
             Refresh may incur Tesla API charges. Sleeping vehicles are never
             woken.
           </p>
+          <button id="delete-account" class="secondary" hidden>
+            Delete my teslabot account
+          </button>
         </section>
         <section>
           <h2>Your vehicle</h2>
@@ -142,6 +158,146 @@
             Disabling history deletes saved history. The two most recent
             observations remain available for change comparisons.
           </p>
+        </section>
+        <section>
+          <h2>Assistant access</h2>
+          <p>
+            Connect an assistant that supports remote MCP servers to
+            <code id="mcp-endpoint"></code> with a credential below. A
+            credential reads your car's data and saves trip plans; it cannot
+            change settings.
+          </p>
+          <form id="mcp-form">
+            <label for="mcp-label">Name</label>
+            <input id="mcp-label" maxlength="80" placeholder="e.g. Poke" />
+            <button>Create credential</button>
+          </form>
+          <p id="mcp-new" class="secret" hidden></p>
+          <ul id="mcp-tokens"></ul>
+        </section>
+        <section id="telemetry" hidden>
+          <h2>Live data</h2>
+          <p>
+            With Fleet Telemetry the car streams changes as they happen, so
+            answers stay current without polling. First add teslabot's virtual
+            key to the car in the Tesla app.
+          </p>
+          <p>
+            <a id="pairing-link" rel="noopener noreferrer"
+              >Add the virtual key</a
+            >
+          </p>
+          <p id="telemetry-status" class="hint"></p>
+          <div class="actions">
+            <button id="telemetry-enable">Turn on live data</button
+            ><button id="telemetry-check" class="secondary">
+              Check with Tesla</button
+            ><button id="telemetry-disable" class="secondary">Turn off</button>
+          </div>
+        </section>
+        <section id="operator" hidden>
+          <h2>Invites</h2>
+          <form id="invite-form">
+            <label for="invite-label">Who is it for?</label>
+            <input id="invite-label" maxlength="80" />
+            <label for="invite-days">Expires after (days)</label>
+            <input
+              id="invite-days"
+              type="number"
+              min="1"
+              max="30"
+              value="14"
+              required
+            />
+            <button>Create invite link</button>
+          </form>
+          <p id="invite-new" class="secret" hidden></p>
+          <ul id="invites"></ul>
+          <h2>Drivers</h2>
+          <ul id="accounts"></ul>
+        </section>
+        <section>
+          <h2>Alerts</h2>
+          <p>
+            teslabot can message you itself: a plug-in reminder in the evening
+            and a heads-up before drives your assistant schedules. Checks use
+            the cached reading when it is fresh and never wake the car.
+          </p>
+          <form id="alerts-form">
+            <label
+              ><input type="checkbox" id="alerts-enabled" /> Send alerts</label
+            >
+            <label for="alerts-zone">Time zone</label>
+            <input id="alerts-zone" required maxlength="100" />
+            <label for="alerts-format">Notification destination</label>
+            <select id="alerts-format">
+              <option value="ntfy">ntfy topic URL</option>
+              <option value="json">
+                JSON webhook (Slack, Discord, custom)
+              </option>
+            </select>
+            <input
+              id="alerts-url"
+              type="password"
+              autocomplete="off"
+              placeholder="https://… (leave blank to keep the saved one)"
+              aria-describedby="alerts-destination"
+            />
+            <p id="alerts-destination" class="hint">No destination saved.</p>
+            <label
+              ><input type="checkbox" id="plug-enabled" /> Plug-in
+              reminder</label
+            >
+            <label for="plug-hour">Check at (local hour, 0–23)</label>
+            <input
+              id="plug-hour"
+              type="number"
+              min="0"
+              max="23"
+              value="21"
+              required
+            />
+            <label for="plug-below">Remind when battery is below (%)</label>
+            <input
+              id="plug-below"
+              type="number"
+              min="10"
+              max="95"
+              value="50"
+              required
+            />
+            <label
+              ><input type="checkbox" id="brief-enabled" /> Departure
+              briefings</label
+            >
+            <label for="brief-lead">Minutes before departure</label>
+            <input
+              id="brief-lead"
+              type="number"
+              min="10"
+              max="180"
+              value="45"
+              required
+            />
+            <label for="brief-reserve">Reserve to arrive back with (%)</label>
+            <input
+              id="brief-reserve"
+              type="number"
+              min="5"
+              max="50"
+              value="20"
+              required
+            />
+            <label
+              ><input type="checkbox" id="brief-tight" /> Only when the battery
+              looks tight</label
+            >
+            <button>Save alerts</button>
+            <button type="button" id="alerts-test" class="secondary">
+              Send test
+            </button>
+          </form>
+          <p id="alerts-status" class="hint"></p>
         </section>
       </div>
       <p id="message" role="status" aria-live="polite"></p>

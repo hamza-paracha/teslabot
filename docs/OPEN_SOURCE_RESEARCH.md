@@ -15,9 +15,9 @@ Repository features were checked against their first-party READMEs or implementa
 
 ## Related tools
 
-- `tesla_get_readiness`: observed lock, door, window, trunk and Tesla tire-warning flags. Unknown inputs remain unknown. This is not an inspection or assurance of driving safety.
-- `tesla_get_tires`: reported pressure in bar and PSI and available soft/hard warning flags. Individual pressure measurements can be older than the vehicle-state timestamp.
-- `tesla_get_closures`: door/window/trunk status, without command access.
+- `tesla_get_snapshot` `readiness` section: observed lock, door, window, trunk and Tesla tire-warning flags. Unknown inputs remain unknown. This is not an inspection or assurance of driving safety.
+- `tesla_get_snapshot` `tires` section: reported pressure in bar and PSI and available soft/hard warning flags. Individual pressure measurements can be older than the vehicle-state timestamp.
+- `tesla_get_snapshot` `closures` section: door/window/trunk status, without command access.
 - `tesla_plan_charging`: energy, approximate duration and optional tariff cost for a target percentage. Requires caller-supplied usable capacity; no model/trim capacity is guessed. Does not change the charge limit or start charging.
 - Normalized session energy added, usable battery percentage and charging range rate where returned by Tesla. Session energy is not cumulative historical consumption.
 - Departure planning can include a cached vehicle-attention report without a separate live API call.

@@ -3,7 +3,7 @@ import { AppError } from "../types";
 export const json = (value: unknown, status = 200) =>
   Response.json(value, { status });
 
-export async function readJson(r: Request): Promise<unknown> {
+export async function readJson(r: Request, limit = 2048): Promise<unknown> {
   if (!r.headers.get("Content-Type")?.startsWith("application/json"))
     throw new AppError("json_required", 415);
   const reader = r.body?.getReader();
@@ -15,7 +15,7 @@ export async function readJson(r: Request): Promise<unknown> {
     const chunk = await reader.read();
     if (chunk.done) break;
     size += chunk.value.length;
-    if (size > 2048) {
+    if (size > limit) {
       await reader.cancel();
       throw new AppError("request_too_large", 413);
     }

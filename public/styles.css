@@ -117,6 +117,12 @@ select {
 input {
   width: 360px;
 }
+input[type="checkbox"] {
+  width: auto;
+  padding: 0;
+  margin: 0 8px 0 0;
+  vertical-align: middle;
+}
 .actions {
   display: flex;
   gap: 10px;
@@ -208,4 +214,22 @@ footer {
   .section-title {
     display: block;
   }
+}
+
+.secret {
+  font-family: ui-monospace, monospace;
+  word-break: break-all;
+  border: 1px solid var(--line);
+  padding: 12px;
+}
+ul li button {
+  margin-left: 10px;
+  padding: 4px 10px;
+}
+details summary {
+  cursor: pointer;
+  margin-top: 24px;
+}
+#invite + h2 {
+  margin-top: 40px;
 }

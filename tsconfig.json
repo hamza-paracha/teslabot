@@ -10,5 +10,5 @@
     "types": ["@cloudflare/workers-types", "node"],
     "allowImportingTsExtensions": true
   },
-  "include": ["src", "tests", "scripts", "mcp"]
+  "include": ["src", "tests", "scripts", "mcp", "telemetry/src"]
 }

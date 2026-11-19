@@ -9,13 +9,21 @@ export async function hash(value: string) {
 export async function equal(a: string, b: string) {
   return (await hash(a)) === (await hash(b));
 }
-async function key(secret: string) {
-  const bytes = Uint8Array.from(atob(secret), (c) => c.charCodeAt(0));
-  if (bytes.length !== 32) throw new Error("invalid_encryption_key");
-  return crypto.subtle.importKey("raw", bytes, "AES-GCM", false, [
-    "encrypt",
-    "decrypt",
-  ]);
+// Importing the AES key is repeated work on every record; reuse it per isolate.
+const keys = new Map<string, Promise<CryptoKey>>();
+function key(secret: string) {
+  let found = keys.get(secret);
+  if (!found) {
+    const bytes = Uint8Array.from(atob(secret), (c) => c.charCodeAt(0));
+    if (bytes.length !== 32) throw new Error("invalid_encryption_key");
+    found = crypto.subtle.importKey("raw", bytes, "AES-GCM", false, [
+      "encrypt",
+      "decrypt",
+    ]);
+    keys.clear();
+    keys.set(secret, found);
+  }
+  return found;
 }
 export async function seal(value: unknown, secret: string, context: string) {
   const iv = crypto.getRandomValues(new Uint8Array(12));

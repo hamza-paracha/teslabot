@@ -119,9 +119,20 @@ async function status() {
   $("connection").textContent = s.connected
     ? "Account connected"
     : "Not connected";
+  const operator = s.role === "operator";
+  $("operator").hidden = !operator;
+  $("delete-account").hidden = s.role !== "user";
+  $("telemetry").hidden = !s.telemetry_available;
   const pairs = {
-    "API credentials": s.configured ? "Configured" : "Missing",
-    "Partner registration": s.partner?.verified ? "Verified" : "Unverified",
+    Role: operator ? "Operator" : "Driver",
+    ...(operator
+      ? {
+          "API credentials": s.configured ? "Configured" : "Missing",
+          "Partner registration": s.partner?.verified
+            ? "Verified"
+            : "Unverified",
+        }
+      : {}),
     "Vehicle Information permission":
       s.authorization.vehicle_information === "unknown"
         ? "Not reported by Tesla"
@@ -155,6 +166,191 @@ async function preferences() {
   $("temperature-threshold").value = p.temperature_change_c;
 }
 
+async function alerts() {
+  const { settings, state } = await api("/admin/alerts");
+  const s = settings || {
+    enabled: false,
+    time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    notify: null,
+    plug_in: { enabled: true, local_hour: 21, below_percentage: 50 },
+    briefings: {
+      enabled: true,
+      lead_minutes: 45,
+      reserve_percentage: 20,
+      only_when_tight: true,
+    },
+  };
+  $("alerts-enabled").checked = s.enabled;
+  $("alerts-zone").value = s.time_zone;
+  $("alerts-format").value = s.notify?.format || "ntfy";
+  $("alerts-url").value = "";
+  $("alerts-destination").textContent = s.notify
+    ? "Saved destination: " + s.notify.host + " (full URL hidden)."
+    : "No destination saved.";
+  $("plug-enabled").checked = s.plug_in.enabled;
+  $("plug-hour").value = s.plug_in.local_hour;
+  $("plug-below").value = s.plug_in.below_percentage;
+  $("brief-enabled").checked = s.briefings.enabled;
+  $("brief-lead").value = s.briefings.lead_minutes;
+  $("brief-reserve").value = s.briefings.reserve_percentage;
+  $("brief-tight").checked = s.briefings.only_when_tight;
+  $("alerts-test").disabled = !s.notify;
+  $("alerts-status").textContent = [
+    state.last_sent_at ? "Last alert sent " + state.last_sent_at + "." : "",
+    state.last_error ? "Last delivery failed (" + state.last_error + ")." : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function item(text, buttons = []) {
+  const li = document.createElement("li");
+  li.textContent = text;
+  for (const [label, handler] of buttons) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "secondary";
+    button.textContent = label;
+    button.onclick = () => action(handler);
+    li.append(button);
+  }
+  return li;
+}
+const post = (path, body = {}) =>
+  api(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+const when = (ms) => new Date(ms).toLocaleString();
+
+async function mcpTokens() {
+  const r = await api("/account/mcp-tokens");
+  $("mcp-endpoint").textContent = r.endpoint;
+  $("mcp-tokens").replaceChildren(
+    ...r.tokens.map((t) =>
+      item((t.label || "Unnamed") + " · created " + when(t.created), [
+        [
+          "Revoke",
+          async () => {
+            await post("/account/mcp-tokens/revoke", { id: t.id });
+            await mcpTokens();
+            message("Credential revoked.");
+          },
+        ],
+      ]),
+    ),
+    ...(r.installation_token
+      ? [item("Installation MCP_TOKEN (configured as a secret)")]
+      : []),
+  );
+}
+
+async function telemetry(check = false) {
+  if ($("telemetry").hidden) return;
+  const t = await api("/api/telemetry" + (check ? "?check=true" : ""));
+  $("pairing-link").href = t.pairing_url;
+  $("telemetry-enable").hidden = t.enabled;
+  $("telemetry-disable").hidden = !t.enabled;
+  const parts = [t.enabled ? "Live data is on." : "Live data is off."];
+  if (t.state?.last_record_at)
+    parts.push(
+      "Last update " + new Date(t.state.last_record_at).toLocaleString() + ".",
+    );
+  if (t.state?.connected != null)
+    parts.push(t.state.connected ? "Car connected." : "Car not connected.");
+  if (t.tesla)
+    parts.push(
+      "Tesla: " +
+        (t.tesla.synced
+          ? "configuration adopted"
+          : "waiting for the car to connect") +
+        (t.tesla.key_paired === false ? ", virtual key not paired" : "") +
+        (t.tesla.errors?.length
+          ? ", " + t.tesla.errors.length + " recent errors"
+          : "") +
+        ".",
+    );
+  $("telemetry-status").textContent = parts.join(" ");
+}
+
+async function operatorPanels() {
+  if ($("operator").hidden) return;
+  const [invites, accounts] = await Promise.all([
+    api("/admin/invites"),
+    api("/admin/accounts"),
+  ]);
+  $("invites").replaceChildren(
+    ...invites.invites.map((i) =>
+      item(
+        (i.label || "Invite") +
+          " · " +
+          i.status +
+          " · expires " +
+          when(i.expires),
+        i.status === "open"
+          ? [
+              [
+                "Revoke",
+                async () => {
+                  await post("/admin/invites/revoke", { id: i.id });
+                  await operatorPanels();
+                },
+              ],
+            ]
+          : [],
+      ),
+    ),
+  );
+  $("accounts").replaceChildren(
+    ...accounts.accounts.map((a) =>
+      item(
+        (a.owner ? "You (operator)" : a.label || a.id.slice(0, 8)) +
+          (a.connected ? " · connected" : " · not connected") +
+          (a.telemetry ? " · live data" : "") +
+          (a.disabled ? " · disabled" : ""),
+        a.owner
+          ? []
+          : [
+              [
+                a.disabled ? "Enable" : "Disable",
+                async () => {
+                  await post("/admin/accounts/disable", {
+                    id: a.id,
+                    disabled: !a.disabled,
+                  });
+                  await operatorPanels();
+                },
+              ],
+              [
+                "Delete",
+                async () => {
+                  if (
+                    !confirm(
+                      "Delete this driver's account and all of its data?",
+                    )
+                  )
+                    return;
+                  await post("/admin/accounts/delete", { id: a.id });
+                  await operatorPanels();
+                },
+              ],
+            ],
+      ),
+    ),
+  );
+}
+
+async function panels() {
+  await Promise.all([
+    preferences(),
+    alerts(),
+    mcpTokens(),
+    telemetry(),
+    operatorPanels(),
+  ]);
+}
+
 async function action(task) {
   if (busy) return;
   busy = true;
@@ -180,7 +376,7 @@ $("login-form").addEventListener("submit", (event) => {
       headers: { Authorization: "Bearer " + value },
     });
     await status();
-    await preferences();
+    await panels();
   });
 });
 $("connect").onclick = () => location.assign("/auth/login");
@@ -284,7 +480,108 @@ $("preferences-form").addEventListener("submit", (event) => {
   });
 });
 
+$("alerts-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  return action(async () => {
+    const url = $("alerts-url").value.trim();
+    const saved = $("alerts-destination").textContent.startsWith("Saved");
+    await api("/admin/alerts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        enabled: $("alerts-enabled").checked,
+        time_zone: $("alerts-zone").value.trim(),
+        notify:
+          url || saved
+            ? { format: $("alerts-format").value, ...(url ? { url } : {}) }
+            : null,
+        plug_in: {
+          enabled: $("plug-enabled").checked,
+          local_hour: Number($("plug-hour").value),
+          below_percentage: Number($("plug-below").value),
+        },
+        briefings: {
+          enabled: $("brief-enabled").checked,
+          lead_minutes: Number($("brief-lead").value),
+          reserve_percentage: Number($("brief-reserve").value),
+          only_when_tight: $("brief-tight").checked,
+        },
+      }),
+    });
+    await alerts();
+    message("Alert settings saved.");
+  });
+});
+$("alerts-test").onclick = () =>
+  action(async () => {
+    await api("/admin/alerts/test", { method: "POST" });
+    message("Test notification sent.");
+  });
+
+$("tesla-signin").onclick = () => location.assign("/auth/signin");
+$("mcp-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  return action(async () => {
+    const r = await post("/account/mcp-tokens", {
+      label: $("mcp-label").value,
+    });
+    $("mcp-label").value = "";
+    $("mcp-new").hidden = false;
+    $("mcp-new").textContent =
+      "Copy this credential now; it will not be shown again: " + r.token;
+    await mcpTokens();
+  });
+});
+$("invite-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  return action(async () => {
+    const r = await post("/admin/invites", {
+      label: $("invite-label").value,
+      days: Number($("invite-days").value),
+    });
+    $("invite-label").value = "";
+    $("invite-new").hidden = false;
+    $("invite-new").textContent =
+      "Send this single-use link (shown once): " + r.invite_url;
+    await operatorPanels();
+  });
+});
+$("telemetry-enable").onclick = () =>
+  action(async () => {
+    const r = await post("/api/telemetry/enable");
+    message(r.note);
+    await telemetry();
+  });
+$("telemetry-check").onclick = () => action(() => telemetry(true));
+$("telemetry-disable").onclick = () =>
+  action(async () => {
+    await post("/api/telemetry/disable");
+    await telemetry();
+    message("Live data turned off.");
+  });
+$("delete-account").onclick = () => {
+  if (
+    !confirm(
+      "Delete your teslabot account, credentials and all stored data? Revoke teslabot in your Tesla account settings as well.",
+    )
+  )
+    return;
+  return action(async () => {
+    await post("/account/delete");
+    location.assign("/");
+  });
+};
+
 const oauthMessages = {
+  invite_invalid:
+    "This invite link has expired or was already used. Ask for a new one.",
+  invite_required:
+    "That Tesla account isn't registered with teslabot yet. You need an invite link to join.",
+  account_disabled: "This teslabot account has been disabled by the operator.",
+  tesla_account_already_linked:
+    "That Tesla account is already linked to a different teslabot account.",
+  tesla_identity_unavailable:
+    "Tesla did not identify the account. Try signing in again.",
   invalid_oauth_state:
     "Tesla sign-in could not be matched to this browser. Start again from this dashboard in the same browser.",
   expired_or_replayed_state:
@@ -301,6 +598,12 @@ async function start() {
   const url = new URL(location.href);
   const error = url.searchParams.get("oauth_error");
   const connected = url.searchParams.get("oauth") === "connected";
+  const invite = url.searchParams.get("invite");
+  if (invite && /^[a-f0-9]{32,64}$/.test(invite)) {
+    $("invite").hidden = false;
+    $("accept-invite").onclick = () =>
+      location.assign("/auth/signup?invite=" + encodeURIComponent(invite));
+  }
   if (error || connected) {
     url.searchParams.delete("oauth_error");
     url.searchParams.delete("oauth");
@@ -308,7 +611,7 @@ async function start() {
   }
   try {
     await status();
-    await preferences();
+    await panels();
     // One metadata discovery after owner consent; never a live data read or poll.
     if (connected && connection.connected) await action(discover);
   } catch (e) {
