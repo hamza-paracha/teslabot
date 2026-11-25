@@ -12,7 +12,7 @@ Use a dedicated HTTPS subdomain in an active Cloudflare-managed zone. Keep exist
 8. Review the config, then run `npx wrangler deploy`. Cloudflare manages the Custom Domain and HTTPS certificate. The hostname must belong to an active zone in this account.
 9. Run `TESLABOT_URL=https://tesla.your-domain.tld npm run smoke`. This checks HTTPS health, exact public-key matching and unauthenticated protection without calling Tesla.
 
-The private key remains under ignored `secrets/`; only the generated public key under `public/` becomes an asset. Cloudflare Secrets hold ADMIN_TOKEN, MCP_TOKEN, TOKEN_ENCRYPTION_KEY, TESLA_CLIENT_ID and TESLA_CLIENT_SECRET, plus the optional telemetry secrets described in [live data](TELEMETRY_SETUP.md). A cron trigger every 10 minutes runs opt-in alerts. No public preview URLs are configured. When upgrading, apply new migrations, such as `0003_accounts.sql`, before deploying.
+The private key remains under ignored `secrets/`; only the generated public key under `public/` becomes an asset. Cloudflare Secrets hold ADMIN_TOKEN, MCP_TOKEN, TOKEN_ENCRYPTION_KEY, TESLA_CLIENT_ID and TESLA_CLIENT_SECRET, plus the optional telemetry secrets described in [live data](TELEMETRY_SETUP.md). A cron trigger every 10 minutes runs opt-in alerts. No public preview URLs are configured. When upgrading, verify the target database and apply pending D1 migrations before deploying. The alert runner requires [`0004_alert_deliveries.sql`](../migrations/0004_alert_deliveries.sql) for its delivery claims.
 
 Keep the same database and encryption key across deployments. Use separate Worker names, D1 databases and credentials for development/staging. See [security](SECURITY.md) for backup and recovery limitations.
 
