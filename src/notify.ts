@@ -9,12 +9,17 @@ export async function sendNotification(
   target: NonNullable<AlertSettings["notify"]>,
   notification: Notification,
   fetcher: typeof fetch = platformFetch,
+  deliveryId?: string,
 ) {
+  const deliveryHeaders: Record<string, string> = deliveryId
+    ? { "Idempotency-Key": deliveryId }
+    : {};
   const init: RequestInit =
     target.format === "ntfy"
       ? {
           method: "POST",
           headers: {
+            ...deliveryHeaders,
             "Content-Type": "text/plain; charset=utf-8",
             ...(header(notification.title)
               ? { Title: header(notification.title) }
@@ -25,7 +30,7 @@ export async function sendNotification(
         }
       : {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { ...deliveryHeaders, "Content-Type": "application/json" },
           body: JSON.stringify({
             kind: notification.kind,
             title: notification.title,
@@ -43,6 +48,6 @@ export async function sendNotification(
   } catch {
     throw new AppError("notification_unreachable", 502);
   }
-  await response.body?.cancel();
+  await response.body?.cancel().catch(() => {});
   if (!response.ok) throw new AppError("notification_rejected", 502);
 }

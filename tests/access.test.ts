@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { makeSession } from "../src/security/authorization";
+import { runScheduled } from "../src/scheduled";
 import { normalize } from "../src/tesla/normalization";
 import { vehicleId } from "../src/tesla/vehicles";
 import { e, store, origin, vin, fixture, tokens, req } from "./helpers/app";
@@ -176,6 +177,62 @@ describe("owner reconnection", () => {
         (await e.DB.prepare("SELECT * FROM records").all()).results,
       ),
     ).not.toContain("replacement-refresh-fixture");
+  });
+
+  it("sends a reminder for the replacement car after a same-day reconnect", async () => {
+    const now = Date.now();
+    async function configureAlerts(car: typeof vehicle, url: string) {
+      const id = await vehicleId(car);
+      await store.putMany({
+        selected: { id, vin: car.vin },
+        summary: normalize(
+          {
+            ...fixture,
+            charge_state: { ...fixture.charge_state, battery_level: 30 },
+          },
+          id,
+          car.display_name,
+          false,
+        ),
+        alert_settings: {
+          enabled: true,
+          time_zone: "UTC",
+          notify: { format: "json", url },
+          plug_in: { enabled: true, local_hour: 0, below_percentage: 50 },
+          briefings: { enabled: false },
+        },
+      });
+    }
+    const send = vi.fn(
+      async (_url: RequestInfo | URL, _init?: RequestInit) =>
+        new Response("ok"),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json(tokens())),
+    );
+    await store.put("owner_tokens", tokens());
+    await configureAlerts(vehicle, "https://hooks.example.com/old");
+    await runScheduled(e, undefined, now, send);
+    expect(send).toHaveBeenCalledTimes(1);
+
+    expect((await complete(await beginReconnect())).status).toBe(303);
+    expect(await store.get("alert_state")).toBeNull();
+    expect(await store.get("alert_settings")).toBeNull();
+    const replacementUrl = "https://hooks.example.com/new";
+    await configureAlerts(
+      { ...vehicle, vin: "5YJ3E1EA7KF000002" },
+      replacementUrl,
+    );
+    await runScheduled(e, undefined, now, send);
+    expect(send.mock.calls.map(([url]) => url)).toEqual([
+      "https://hooks.example.com/old",
+      replacementUrl,
+    ]);
+    const keys = send.mock.calls.map(([, init]) =>
+      new Headers(init?.headers).get("Idempotency-Key"),
+    );
+    expect(keys[1]).not.toBe(keys[0]);
   });
 
   it("does not allow a regular connect transaction to replace an account", async () => {
