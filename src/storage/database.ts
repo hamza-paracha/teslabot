@@ -10,6 +10,9 @@ export const accountPrefix = (account: string) =>
   account ? `acct:${account}:` : "";
 export class Store {
   readonly prefix: string;
+  // Leases this Store currently holds, owner -> full lock name. Writes check
+  // that every one is still held (see putMany).
+  private leases = new Map<string, string>();
   constructor(
     public env: Env,
     public ctx?: Pick<ExecutionContext, "waitUntil">,
@@ -64,11 +67,40 @@ export class Store {
         ),
       ),
     );
-    if (statements.length || extraStatements.length)
-      await this.env.DB.batch([...statements, ...extraStatements]);
+    if (!statements.length && !extraStatements.length) return;
+    const fence = [...this.leases].map(([owner, name]) =>
+      this.leaseCheck(name, owner),
+    );
+    try {
+      await this.env.DB.batch([...fence, ...statements, ...extraStatements]);
+    } catch (error) {
+      if (fence.length && (await this.lostLease()))
+        throw new AppError("lease_lost", 409);
+      throw error;
+    }
+  }
+  // A lease outlives its 120 s expiry only until another caller takes the
+  // lock. This statement fails (json() rejects the text) once the lock row no
+  // longer names this owner, and D1 rolls back the whole batch, so a holder
+  // that lost its lease cannot overwrite the next holder's writes.
+  private leaseCheck(name: string, owner: string) {
+    return this.env.DB.prepare(
+      "SELECT CASE WHEN EXISTS(SELECT 1 FROM locks WHERE name=? AND owner=?) THEN 1 ELSE json('lease_lost') END",
+    ).bind(name, owner);
+  }
+  private async lostLease() {
+    for (const [owner, name] of this.leases) {
+      const row = await this.env.DB.prepare(
+        "SELECT 1 FROM locks WHERE name=? AND owner=?",
+      )
+        .bind(name, owner)
+        .first();
+      if (!row) return true;
+    }
+    return false;
   }
   async delete(key: string) {
-    await this.deleteKeys([key]).run();
+    await this.putMany({}, [this.deleteKeys([key])]);
   }
   // A statement for use in a batch, so deletions commit with related writes.
   deleteKeys(keys: string[]) {
@@ -118,9 +150,11 @@ export class Store {
       const result = settled && (await settled());
       if (result) return result;
     }
+    this.leases.set(owner, this.key(name));
     try {
       return await fn();
     } finally {
+      this.leases.delete(owner);
       await this.env.DB.prepare("DELETE FROM locks WHERE name=? AND owner=?")
         .bind(this.key(name), owner)
         .run();
