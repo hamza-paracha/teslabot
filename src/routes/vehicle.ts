@@ -226,11 +226,15 @@ export async function vehicleRoute(
   if (p === "/admin/preferences" && r.method === "POST") {
     const parsed = preferencesSchema.safeParse(await readJson(r));
     if (!parsed.success) throw new AppError("invalid_preferences");
-    await store.locked("vehicle", async () => {
-      await store.put("preferences", parsed.data);
-      if (!parsed.data.history_enabled)
-        await store.delete("observation_history");
-    });
+    // One batch, so an opt-out never saves without its history purge.
+    await store.locked("vehicle", () =>
+      store.putMany(
+        { preferences: parsed.data },
+        parsed.data.history_enabled
+          ? []
+          : [store.deleteKeys(["observation_history"])],
+      ),
+    );
     return json(parsed.data);
   }
   if (p === "/api/vehicle/history" && r.method === "GET") {
