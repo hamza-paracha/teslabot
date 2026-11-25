@@ -61,7 +61,7 @@ Accounts and live data:
 - `POST/GET /admin/invites`, `POST /admin/invites/revoke`, `GET /admin/accounts`, `POST /admin/accounts/disable`, `POST /admin/accounts/delete`: operator only.
 - `GET/POST /account/mcp-tokens`, `POST /account/mcp-tokens/revoke`: the operator's or driver's own MCP credentials. `POST /account/delete`: a driver may delete their own account; the operator account cannot be deleted.
 - `GET /api/telemetry` (`?check=true` asks Tesla), `POST /api/telemetry/enable`, `POST /api/telemetry/disable`: live data for the selected car.
-- `POST /telemetry/ingest`: the telemetry relay only (`TELEMETRY_INGEST_TOKEN`). Returns `received`, `applied` and `ignored` (vehicle-data records that changed the stored reading, and those that had nothing newer than it), `unknown_vehicles` and `failed_accounts`.
+- `POST /telemetry/ingest`: the telemetry relay only (`TELEMETRY_INGEST_TOKEN`). The relay sends a UUID in `Idempotency-Key` and reuses it when retrying the same batch. Returns `received`, `applied` and `ignored` (vehicle-data records committed by this attempt and those skipped), `unknown_vehicles` and `failed_accounts`. HTTP 503 means some accounts failed; other accounts may already have committed.
 
 Responses include retrieved/observed timestamps, stale status, awake information and potential API charges. API failures contain stable codes without upstream sensitive details. Vehicle metadata/cache records are encrypted; VINs are used only server-side. Always inspect stale flags before answering “right now.”
 

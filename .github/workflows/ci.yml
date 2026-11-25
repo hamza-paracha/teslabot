@@ -15,3 +15,25 @@ jobs:
       - run: cp wrangler.example.jsonc wrangler.jsonc
       - run: npm run check
       - run: npm run plugin:build
+      - run: npm run smoke:workerd
+      - name: Run synthetic benchmark
+        id: benchmark
+        run: npm run bench -- --out "$RUNNER_TEMP/teslabot-benchmark.json"
+      - name: Upload benchmark report
+        if: ${{ !cancelled() && (steps.benchmark.outcome == 'success' || steps.benchmark.outcome == 'failure') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: teslabot-benchmark
+          path: ${{ runner.temp }}/teslabot-benchmark.json
+          if-no-files-found: error
+
+  relay:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install pyzmq==27.3.0
+      - run: python -m unittest test_relay.py
+        working-directory: telemetry/container

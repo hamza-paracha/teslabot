@@ -15,6 +15,7 @@ export const trip = {
 };
 export const HOURS_ASLEEP = 3;
 export const scenarios = {
+  timeline: "One trip, one simulated car: online, asleep, then back online.",
   fresh:
     "The car is online. The first question reads it; the follow-up is served from the cache.",
   asleep: `The car fell asleep ${HOURS_ASLEEP} hours ago and the cache holds its last reading from then. teslabot never wakes the car.`,
@@ -22,6 +23,7 @@ export const scenarios = {
 export type Scenario = keyof typeof scenarios;
 
 export interface Step {
+  phase?: "Healthy" | "Asleep" | "Recovered";
   question: string;
   arguments: Record<string, unknown>;
   latency_ms: number;
@@ -107,16 +109,34 @@ export async function runScenario(
     if (scenario === "asleep") await fallAsleep(h);
     const client = await connect(h);
     const steps: Step[] = [];
-    const record = (step: Step) => (steps.push(step), onStep(step), step);
+    const record = (step: Step, phase?: Step["phase"]) => {
+      const entry = phase ? { ...step, phase } : step;
+      steps.push(entry);
+      onStep(entry);
+      return entry;
+    };
     const first = record(
       await ask(h, client, "Can I make the round trip?", trip),
+      scenario === "timeline" ? "Healthy" : undefined,
     );
-    record(
-      await ask(h, client, "What if I want 30% left when I get home?", {
-        trip_id: first.plan.trip_id,
-        reserve_percentage: 30,
-      }),
-    );
+    const savedTrip = { trip_id: first.plan.trip_id };
+    if (scenario === "timeline") {
+      await fallAsleep(h);
+      record(await ask(h, client, "Can I still make it?", savedTrip), "Asleep");
+      h.tesla.car.state = "online";
+      h.tesla.car.battery_level = 69;
+      record(
+        await ask(h, client, "Can I make it now?", savedTrip),
+        "Recovered",
+      );
+    } else {
+      record(
+        await ask(h, client, "What if I want 30% left when I get home?", {
+          ...savedTrip,
+          reserve_percentage: 30,
+        }),
+      );
+    }
     await client.close();
     return steps;
   } finally {

@@ -1,6 +1,6 @@
 // "Can I make the round trip?" without a Tesla, an account or a location.
 //
-//   npm run demo                        both scenarios
+//   npm run demo                        healthy → asleep → recovered
 //   npm run demo -- --scenario fresh    car online, reading taken now
 //   npm run demo -- --scenario asleep   car asleep, last reading 3 hours old
 //   npm run demo -- --json              raw tool responses
@@ -12,17 +12,17 @@ import { runScenario, scenarios, type Scenario, type Step } from "./lib/demo";
 
 const { values } = parseArgs({
   options: {
-    scenario: { type: "string", default: "both" },
+    scenario: { type: "string", default: "timeline" },
     json: { type: "boolean", default: false },
   },
 });
 const names = Object.keys(scenarios) as Scenario[];
 const selected =
   values.scenario === "both"
-    ? names
+    ? names.filter((name) => name !== "timeline")
     : names.filter((name) => name === values.scenario);
 if (!selected.length) {
-  console.error("--scenario must be fresh, asleep or both");
+  console.error("--scenario must be timeline, fresh, asleep or both");
   process.exit(2);
 }
 
@@ -36,6 +36,7 @@ const age = (seconds: number | null | undefined) =>
         : `${Math.round(seconds / 360) / 10} h old`;
 
 function print({
+  phase,
   question,
   arguments: args,
   plan,
@@ -43,6 +44,7 @@ function print({
   latency_ms,
 }: Step) {
   const d = plan.data ?? {};
+  if (phase) console.log(`\n  Phase: ${phase}`);
   console.log(`\n  Q: "${question}"`);
   console.log(`     tool       tesla_plan_trip ${JSON.stringify(args)}`);
   console.log(

@@ -30,9 +30,11 @@ export interface TelemetryState {
   connected: boolean | null;
   last_record_at: string | null;
   rotated_at: string | null;
-  // Ordering state for late and repeated records; internal, not returned.
+  // Ordering and acknowledgment state; internal, not returned.
   clock?: SignalClock;
+  last_batch_id?: string;
 }
+const batchIdSchema = z.uuid();
 const ingestSchema = z
   .object({
     records: z
@@ -42,7 +44,14 @@ const ingestSchema = z
             topic: z.string().max(100),
             payload: z.record(z.string(), z.unknown()),
           })
-          .strict(),
+          .strict()
+          .refine(
+            ({ topic, payload }) =>
+              topic.split("_").pop() !== "V" ||
+              payload.data == null ||
+              (Array.isArray(payload.data) &&
+                payload.data.every((item) => item && typeof item === "object")),
+          ),
       )
       .max(200),
   })
@@ -99,7 +108,11 @@ export async function telemetryRoute(
       throw new AppError("telemetry_credential_required", 403);
     const parsed = ingestSchema.safeParse(await readJson(r, 524288));
     if (!parsed.success) throw new AppError("invalid_telemetry_batch");
-    return json(await ingest(e, store, parsed.data.records));
+    const batchId = r.headers.get("Idempotency-Key");
+    if (batchId !== null && !batchIdSchema.safeParse(batchId).success)
+      throw new AppError("invalid_telemetry_batch");
+    const result = await ingest(e, store, parsed.data.records, batchId);
+    return json(result, result.failed_accounts ? 503 : 200);
   }
   if (principal.role === "telemetry") return null;
   if (p === "/api/telemetry" && r.method === "GET") {
@@ -116,6 +129,7 @@ export async function telemetryRoute(
       state: stored.telemetry_state && {
         ...stored.telemetry_state,
         clock: undefined,
+        last_batch_id: undefined,
       },
       fields: Object.keys(TELEMETRY_FIELDS),
     };
@@ -266,6 +280,7 @@ async function ingest(
   e: Env,
   root: Store,
   records: Array<{ topic: string; payload: Record<string, unknown> }>,
+  batchId: string | null,
 ) {
   const byVin = new Map<string, typeof records>();
   for (const record of records) {
@@ -289,7 +304,7 @@ async function ingest(
     results.map(async (row) => {
       const store = root.forAccount(row.account);
       const list = byVin.get(hashes.get(row.vin_hash)!)!;
-      await store.locked(
+      return store.locked(
         "vehicle",
         async () => {
           const stored = await store.getMany([
@@ -304,8 +319,18 @@ async function ingest(
           let summary: Observation | null = stored.summary;
           const state: TelemetryState | null = stored.telemetry_state;
           if (!state) return;
+          if (batchId && state.last_batch_id === batchId)
+            return {
+              applied: 0,
+              ignored: list.filter(
+                (record) => record.topic.split("_").pop() === "V",
+              ).length,
+            };
           const previous = summary;
           const clock = state.clock ?? emptyClock();
+          let applied = 0,
+            ignored = 0,
+            connectivityChanged = false;
           // Records may arrive late, out of order or more than once (the relay
           // retries a batch whose response was lost); only newer values apply.
           for (const record of list) {
@@ -334,12 +359,18 @@ async function ingest(
               const at = dated ?? new Date().toISOString();
               state.connected = record.payload.status === "CONNECTED";
               clock.connectivity = { at, connected: state.connected };
+              connectivityChanged = true;
               if (summary && !state.connected)
                 summary = {
                   ...summary,
                   vehicle: { ...summary.vehicle, online: false },
                 };
             }
+          }
+          if (batchId) state.last_batch_id = batchId;
+          if (!applied && !connectivityChanged) {
+            if (batchId) await store.put("telemetry_state", state);
+            return { applied, ignored };
           }
           state.clock = clock;
           state.last_record_at = new Date().toISOString();
@@ -364,12 +395,19 @@ async function ingest(
               );
           }
           await store.putMany(writes);
+          return { applied, ignored };
         },
         5000,
       );
     }),
   );
-  for (const outcome of outcomes) if (outcome.status === "rejected") failed++;
+  for (const outcome of outcomes) {
+    if (outcome.status === "rejected") failed++;
+    else if (outcome.value) {
+      applied += outcome.value.applied;
+      ignored += outcome.value.ignored;
+    }
+  }
   return {
     received: records.length,
     applied,

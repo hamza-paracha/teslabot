@@ -12,6 +12,8 @@ npm run plugin:build
 
 The check command runs formatting, TypeScript, Vitest and a Worker dry-run build. It makes no live Tesla requests.
 
+GitHub Actions also runs `npm run smoke:workerd` against a local Worker with fresh D1 storage. It checks health, hosted MCP authorization and a tool call, and a cron event without Tesla credentials. A separate CI job runs the Python telemetry relay suite.
+
 The integrated `account-to-agent workflow` test in `tests/workflow.test.ts` uses real application route handlers, a local Cloudflare D1 database, application encryption and an official MCP client/server transport. Shared fixtures and database lifecycle live in `tests/helpers/app.ts`; endpoint tests remain in `tests/integration.test.ts`. Only Tesla's network responses are mocked. The workflow checks:
 
 1. Authorization URL requests a fresh login; state and a browser-bound cookie come from the real login route.
@@ -30,7 +32,7 @@ Other tests cover state expiry/replay and wrong-browser rejection, denied consen
 
 These commands use a local D1 database, freshly generated credentials and a synthetic Tesla upstream. They make no network requests. `npm test` runs the same scenarios.
 
-- `npm run demo` asks "Can I make the round trip?" through the real `tesla_plan_trip` MCP tool, Worker routes, cache and trip planner. It asks once with the car online and a fresh reading, and once with the car asleep and its last reading three hours old. For each question it prints the reading's timestamp and age, whether it was a cache hit, every Tesla request made, and the answer, or why the planner withheld one. Use `--scenario fresh|asleep` for one scenario and `--json` for the raw tool responses.
+- `npm run demo` asks "Can I make the round trip?" through the real `tesla_plan_trip` MCP tool, Worker routes, cache and trip planner. It follows the same saved trip with the car online, then asleep with a three-hour-old reading, then back online with a new reading. For each question it prints the reading's timestamp and age, whether it was a cache hit, every Tesla request made, and the answer, or why the planner withheld one. Use `--scenario fresh|asleep` for the standalone scenarios and `--json` for the raw tool responses.
 - `npm run bench` measures parallel cold, warm, mixed and sleeping-car reads. It reports Tesla requests and p50/p95 latency along with the command and environment, and exits non-zero if the cache, shared refresh or request budget invariants fail. See [benchmarks](BENCHMARKS.md).
 - `npm run telemetry:replay` replays a synthetic drive through the telemetry ingest path and alert runner. It checks the final per-account reading and reminder count against [the fixture](../tests/fixtures/telemetry-drive.json); see [live data](TELEMETRY_SETUP.md#testing).
 

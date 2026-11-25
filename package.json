@@ -10,6 +10,7 @@
     "keys": "bash scripts/generate-keys.sh",
     "mcp": "tsx mcp/src/index.ts",
     "smoke": "tsx scripts/smoke-test.ts",
+    "smoke:workerd": "tsx scripts/workerd-smoke.ts",
     "demo": "tsx scripts/demo.ts",
     "bench": "tsx scripts/bench.ts",
     "telemetry:replay": "tsx scripts/telemetry-replay.ts",

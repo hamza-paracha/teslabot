@@ -1,21 +1,37 @@
 # teslabot
 
-Connect a Tesla to a personal AI agent.
+TeslaBot gives an AI assistant read-only Tesla data and trip estimates through MCP. It won't wake or control the car, and it won't estimate a trip from stale battery data.
 
-teslabot connects Tesla's Fleet API to an AI agent through a Cloudflare Workers backend and an MCP plugin.
+## See it fail safely and recover
 
-## The idea
+After `npm ci` (Node.js 22+), run:
 
-Ask questions about the car alongside other personal context.
+```sh
+npm run demo
+```
 
-For this project, that means questions like:
+**Proof:** [Telemetry replay](docs/VERIFICATION.md#without-a-tesla) · [Benchmarks](docs/BENCHMARKS.md) · [Demo tests](tests/demo.test.ts)
 
-- “What's my battery at?”
-- “Can I make it to this location, and how much battery would I have left?”
-- “What about the round trip?”
-- “Did I leave a window open?”
-- “What changed since I last checked the car?”
-- “How long would it take to charge to 80%?”
+Terminal excerpt from a **synthetic** run: one saved trip through the real MCP tool and local D1. No Tesla, credentials, or real location required.
+
+```text
+  Phase: Healthy
+     upstream   2 Tesla request(s): 1 vehicle_data, 1 vehicle state, 0 wake/command
+     answer     within_reserve: leave with 71% → Office 51.2% → Return to Home 31.4%
+  Phase: Asleep
+     reading    observed 2026-11-24T23:49:15.603Z (3 h old) · cache_hit=true · stale=true · refresh_error=vehicle_asleep
+     upstream   1 Tesla request(s): 0 vehicle_data, 1 vehicle state, 0 wake/command
+     answer     withheld (insufficient_fresh_data)
+  Phase: Recovered
+     upstream   2 Tesla request(s): 1 vehicle_data, 1 vehicle state, 0 wake/command
+     answer     within_reserve: leave with 69% → Office 49.8% → Return to Home 30.5%
+```
+
+The injected telemetry write-failure and retry proof lands separately with the relay acknowledgment PR.
+
+## What you can ask
+
+“Can I make the round trip and get home with 30%?” · “Did I leave a window open?” · “What changed since I last checked?”
 
 There are 8 tools, and none of them can control the car. One `tesla_get_snapshot` call covers battery, charging, climate, doors/windows, tires, location, attention items and changes between readings. `tesla_plan_trip` keeps a trip across follow-up questions: add a stop, change the reserve, ask how long you'd need to plug in. It works backward to the lowest charge you can leave with. The others cover vehicle selection, history, recording how a planned trip actually went, scheduling departure briefings, charging cost and departure planning. The [full tool list and setup](docs/MCP_SETUP.md) are in the docs.
 
@@ -59,10 +75,4 @@ npm run plugin:build
 
 That checks the code and builds the plugin into `dist/teslabot`.
 
-### Try it without a Tesla
-
-```sh
-npm run demo
-```
-
-This asks "Can I make the round trip?" through the real MCP tool, cache and trip planner, with a synthetic car and a local database. It needs no credentials, car or location. With a fresh reading you get an estimate. With a sleeping car you get no estimate, and the demo shows the reading's age, which Tesla requests were made (no wake) and why the planner withheld the answer. `npm run bench` and `npm run telemetry:replay` measure parallel reads and replay a synthetic telemetry drive the same way. See [verification](docs/VERIFICATION.md#without-a-tesla) and [benchmarks](docs/BENCHMARKS.md). To connect a car, you'll also need your own Tesla developer app, Cloudflare setup and credentials. Start with the [setup docs](docs/README.md).
+To connect a real car, you'll also need your own Tesla developer app, Cloudflare setup and credentials. Start with the [setup docs](docs/README.md).
