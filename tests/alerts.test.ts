@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { normalize } from "../src/tesla/normalization";
 import { runScheduled } from "../src/scheduled";
+import { Store } from "../src/storage/database";
 import { e, store, vin, req } from "./helpers/app";
 
 const id = "a".repeat(24);
@@ -57,6 +58,8 @@ function notifier(ok = true) {
     ok ? new Response("ok") : new Response("no", { status: 500 }),
   );
 }
+const deliveryKey = (init?: RequestInit) =>
+  new Headers(init?.headers).get("Idempotency-Key");
 
 describe("alert settings", () => {
   it("stores the destination privately and keeps it when omitted", async () => {
@@ -110,8 +113,10 @@ describe("scheduled alerts", () => {
     expect(String(url)).toBe("https://ntfy.example.com/secret-topic");
     expect(init?.headers).toMatchObject({ Title: "Plug in tonight?" });
     expect(String(init?.body)).toContain("30% and the car isn't plugged in");
+    expect(deliveryKey(init)).toMatch(/^[a-f0-9]{64}$/);
     await runScheduled(e, undefined, Date.now() + 86400000, send);
     expect(send).toHaveBeenCalledTimes(2);
+    expect(deliveryKey(send.mock.calls[1][1])).not.toBe(deliveryKey(init));
     expect(tesla).not.toHaveBeenCalled();
     await store.putMany({
       summary: reading(30, "Charging"),
@@ -127,10 +132,13 @@ describe("scheduled alerts", () => {
     await store.putMany({
       selected: { id, vin },
       summary: reading(30),
-      alert_settings: settings(),
+      alert_settings: settings({
+        notify: { format: "json", url: "https://hooks.example.com/alerts" },
+      }),
     });
     vi.stubGlobal("fetch", vi.fn());
-    await runScheduled(e, undefined, Date.now(), notifier(false));
+    const fail = notifier(false);
+    await runScheduled(e, undefined, Date.now(), fail);
     expect(
       ((await (await admin("/admin/alerts")).json()) as any).state,
     ).toMatchObject({
@@ -140,6 +148,35 @@ describe("scheduled alerts", () => {
     const send = notifier();
     await runScheduled(e, undefined, Date.now(), send);
     expect(send).toHaveBeenCalledTimes(1);
+    const key = deliveryKey(fail.mock.calls[0][1]);
+    expect(key).toMatch(/^[a-f0-9]{64}$/);
+    expect(deliveryKey(send.mock.calls[0][1])).toBe(key);
+  });
+  it("does not post the same reminder again if saving alert status fails", async () => {
+    await store.putMany({
+      selected: { id, vin },
+      summary: reading(30),
+      alert_settings: settings(),
+    });
+    vi.stubGlobal("fetch", vi.fn());
+    const now = Date.now();
+    const put = vi.spyOn(Store.prototype, "put");
+    const send = notifier().mockImplementationOnce(async () => {
+      put.mockRejectedValueOnce(new Error("D1 unavailable"));
+      return new Response("ok");
+    });
+    try {
+      expect(await runScheduled(e, undefined, now, send)).toMatchObject([
+        { ran: false, reason: "failed" },
+      ]);
+      expect(await store.get("alert_state")).toBeNull();
+      expect(await runScheduled(e, undefined, now, send)).toMatchObject([
+        { ran: true, sent: [], checked: ["plug_in"] },
+      ]);
+      expect(send).toHaveBeenCalledTimes(1);
+    } finally {
+      put.mockRestore();
+    }
   });
   it("does nothing and contacts nobody when alerts are off", async () => {
     await store.putMany({
@@ -213,6 +250,9 @@ describe("scheduled alerts", () => {
     expect(send).toHaveBeenCalledTimes(1);
     await runScheduled(e, undefined, Date.parse(later) - 30 * 60000, send);
     expect(send).toHaveBeenCalledTimes(2);
+    const firstKey = deliveryKey(send.mock.calls[0][1]);
+    expect(firstKey).toMatch(/^[a-f0-9]{64}$/);
+    expect(deliveryKey(send.mock.calls[1][1])).not.toBe(firstKey);
     const cancelled = (await (
       await mcp("/api/briefings", {
         events: [

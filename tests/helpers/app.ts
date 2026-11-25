@@ -85,6 +85,7 @@ beforeEach(async () => {
       "invites",
       "mcp_tokens",
       "telemetry_vehicles",
+      "alert_deliveries",
     ].map((t) => e.DB.prepare("DELETE FROM " + t)),
     e.DB.prepare("DELETE FROM accounts WHERE id<>''"),
     e.DB.prepare("UPDATE accounts SET disabled=0, tesla_sub_hash=NULL"),

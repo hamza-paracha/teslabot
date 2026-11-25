@@ -3,6 +3,7 @@ import { AppError } from "./types";
 import { Store } from "./storage/database";
 import { currentSummary } from "./routes/vehicle";
 import { sendNotification } from "./notify";
+import { hash } from "./security/crypto";
 import {
   defaultAlertState,
   departureBriefing,
@@ -16,6 +17,7 @@ import {
 import type { Observation } from "./context/observations";
 
 const CONCURRENCY = 5;
+const DELIVERY_RETENTION_MS = 3 * 86400000;
 
 // Accounts that have alert settings saved. Key names are not encrypted; values are.
 async function alertAccounts(e: Env) {
@@ -39,6 +41,10 @@ export async function runScheduled(
 ) {
   if (!e.DB || !e.TOKEN_ENCRYPTION_KEY) return [];
   const accounts = await alertAccounts(e);
+  if (accounts.length)
+    await e.DB.prepare("DELETE FROM alert_deliveries WHERE expires <= ?")
+      .bind(now)
+      .run();
   const results: Array<Record<string, unknown>> = [];
   for (let i = 0; i < accounts.length; i += CONCURRENCY) {
     const batch = accounts.slice(i, i + CONCURRENCY);
@@ -121,27 +127,56 @@ async function check(
   }
   const sent: string[] = [],
     checked: string[] = [];
-  const deliver = async (notification: Notification | null) => {
+  const deliver = async (
+    notification: Notification | null,
+    ...occurrence: string[]
+  ) => {
     if (!notification) return true;
+    const deliveryId = await hash(
+      JSON.stringify([store.account, notification.kind, ...occurrence]),
+    );
+    const claim = await e.DB.prepare(
+      "INSERT INTO alert_deliveries(id,account,expires) VALUES(?,?,?) ON CONFLICT(id) DO NOTHING RETURNING id",
+    )
+      .bind(deliveryId, store.account, now + DELIVERY_RETENTION_MS)
+      .first();
+    if (!claim) return true;
     try {
-      await sendNotification(settings.notify!, notification, fetcher);
-      sent.push(notification.kind);
-      state.last_sent_at = new Date(now).toISOString();
-      state.last_error = null;
-      await store.audit("alert_sent");
-      return true;
+      await sendNotification(
+        settings.notify!,
+        notification,
+        fetcher,
+        deliveryId,
+      );
     } catch (error) {
+      await e.DB.prepare("DELETE FROM alert_deliveries WHERE id=?")
+        .bind(deliveryId)
+        .run();
       state.last_error =
         error instanceof AppError ? error.code : "notification_failed";
       return false;
     }
+    sent.push(notification.kind);
+    state.last_sent_at = new Date(now).toISOString();
+    state.last_error = null;
+    await store.audit("alert_sent");
+    return true;
   };
-  if (plugDue && (await deliver(plugInReminder(observation, settings, now)))) {
+  if (
+    plugDue &&
+    (await deliver(plugInReminder(observation, settings, now), local.date))
+  ) {
     state.plug_in_checked_date = local.date;
     checked.push("plug_in");
   }
   for (const item of due)
-    if (await deliver(departureBriefing(item, observation, settings, now))) {
+    if (
+      await deliver(
+        departureBriefing(item, observation, settings, now),
+        item.event_id,
+        item.departs_at,
+      )
+    ) {
       state.handled[item.event_id] = item.departs_at;
       checked.push("briefing:" + item.event_id);
     }
