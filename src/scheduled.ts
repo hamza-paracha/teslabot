@@ -133,7 +133,12 @@ async function check(
   ) => {
     if (!notification) return true;
     const deliveryId = await hash(
-      JSON.stringify([store.account, notification.kind, ...occurrence]),
+      JSON.stringify([
+        store.account,
+        stored.selected.id,
+        notification.kind,
+        ...occurrence,
+      ]),
     );
     const claim = await e.DB.prepare(
       "INSERT INTO alert_deliveries(id,account,expires) VALUES(?,?,?) ON CONFLICT(id) DO NOTHING RETURNING id",

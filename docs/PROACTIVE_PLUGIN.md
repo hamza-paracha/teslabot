@@ -9,7 +9,7 @@ teslabot can deliver two kinds of alerts itself, so they still arrive when no as
 
 Enable alerts in the dashboard's Alerts section. Choose an ntfy topic URL or a JSON webhook, which is sent `{kind,title,message,text}`. Use Send test to confirm delivery. The Worker's cron trigger (`*/10 * * * *` in `wrangler.jsonc`) runs the checks. It uses a fresh cached reading when one exists, otherwise one Tesla read; an asleep car is reported from its last known reading.
 
-TeslaBot claims each scheduled delivery in D1 before posting it, so a repeat cron run won't send it again if the Worker stops before saving its alert status. If the Worker stops after claiming but before posting, that occurrence may be missed. A reported webhook failure releases the claim for a retry, and the error is shown in the dashboard. Retries send the same `Idempotency-Key` header; receivers can use it to ignore a duplicate if they accepted the first request but TeslaBot didn't receive confirmation.
+TeslaBot claims each scheduled delivery for the selected car in D1 before posting it, so a repeat cron run won't send it again if the Worker stops before saving its alert status. If the Worker stops after claiming but before posting, that occurrence may be missed. A reported webhook failure releases the claim for a retry, and the error is shown in the dashboard. Retries send the same `Idempotency-Key` header; receivers can use it to ignore a duplicate if they accepted the first request but TeslaBot didn't receive confirmation.
 
 ## Host-driven planning
 
