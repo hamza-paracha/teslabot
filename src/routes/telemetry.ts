@@ -101,6 +101,7 @@ export async function telemetryRoute(
     if (!parsed.success) throw new AppError("invalid_telemetry_batch");
     return json(await ingest(e, store, parsed.data.records));
   }
+  if (principal.role === "telemetry") return null;
   if (p === "/api/telemetry" && r.method === "GET") {
     const stored = await store.getMany(["selected", "telemetry_state"]);
     const mapped = await e.DB.prepare(
