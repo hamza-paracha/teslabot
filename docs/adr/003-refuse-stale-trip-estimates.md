@@ -18,8 +18,8 @@ The route and reserve remain saved for a follow-up. A sleeping car can still cos
 
 ## Evidence
 
-- [Sleeping-car demo test](https://github.com/hamza-paracha/teslabot/blob/2835d00ecfd08df826068da9a23baa13e9447314/tests/demo.test.ts#L88) asserts one vehicle-state request, no vehicle-data or wake/command requests, and no estimate.
-- [Trip refusal unit test](https://github.com/hamza-paracha/teslabot/blob/2835d00ecfd08df826068da9a23baa13e9447314/tests/trips.test.ts#L117) checks distinct responses for stale data and a missing route.
+- [Sleeping-car demo test](https://github.com/hamza-paracha/teslabot/blob/54dab29972209dfaeb010f4b223c72c5db6efcd7/tests/demo.test.ts#L88) asserts one vehicle-state request, no vehicle-data or wake/command requests, and no estimate.
+- [Trip refusal unit test](https://github.com/hamza-paracha/teslabot/blob/54dab29972209dfaeb010f4b223c72c5db6efcd7/tests/trips.test.ts#L117) checks distinct responses for stale data and a missing route.
 
 ## Revisit when
 

@@ -18,10 +18,10 @@ If any account fails to commit, the Worker returns HTTP 503 and counts only comm
 
 ## Evidence
 
-- [Relay queue overflow test](https://github.com/hamza-paracha/teslabot/blob/2835d00ecfd08df826068da9a23baa13e9447314/telemetry/container/test_relay.py#L141) checks that the oldest record is dropped.
-- [Relay HTTP retry test](https://github.com/hamza-paracha/teslabot/blob/2835d00ecfd08df826068da9a23baa13e9447314/telemetry/container/test_relay.py#L96) checks that the same ID and body are sent on retry and that rejected batches are dropped. The [backoff test](https://github.com/hamza-paracha/teslabot/blob/2835d00ecfd08df826068da9a23baa13e9447314/telemetry/container/test_relay.py#L117) covers network errors, 429 and the 60-second cap.
-- [Partial-commit ingest test](https://github.com/hamza-paracha/teslabot/blob/2835d00ecfd08df826068da9a23baa13e9447314/tests/telemetry.test.ts#L567) checks that only the successful write is counted after a failure, that redelivery recovers the failed account, and that the healthy account's reading and history are unchanged.
-- [Telemetry replay test](https://github.com/hamza-paracha/teslabot/blob/2835d00ecfd08df826068da9a23baa13e9447314/tests/telemetry-replay.test.ts#L11) checks the stored reading through late, repeated, and omitted records. It models loss; it does not restart the relay.
+- [Relay queue overflow test](https://github.com/hamza-paracha/teslabot/blob/54dab29972209dfaeb010f4b223c72c5db6efcd7/telemetry/container/test_relay.py#L141) checks that the oldest record is dropped.
+- [Relay HTTP retry test](https://github.com/hamza-paracha/teslabot/blob/54dab29972209dfaeb010f4b223c72c5db6efcd7/telemetry/container/test_relay.py#L96) checks that the same ID and body are sent on retry and that rejected batches are dropped. The [backoff test](https://github.com/hamza-paracha/teslabot/blob/54dab29972209dfaeb010f4b223c72c5db6efcd7/telemetry/container/test_relay.py#L117) covers network errors, 429 and the 60-second cap.
+- [Partial-commit ingest test](https://github.com/hamza-paracha/teslabot/blob/54dab29972209dfaeb010f4b223c72c5db6efcd7/tests/telemetry.test.ts#L567) checks that only the successful write is counted after a failure, that redelivery recovers the failed account, and that the healthy account's reading and history are unchanged.
+- [Telemetry replay test](https://github.com/hamza-paracha/teslabot/blob/54dab29972209dfaeb010f4b223c72c5db6efcd7/tests/telemetry-replay.test.ts#L11) checks the stored reading through late, repeated, and omitted records. It models loss; it does not restart the relay.
 
 ## Revisit when
 

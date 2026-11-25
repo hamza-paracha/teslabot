@@ -18,9 +18,9 @@ After 120 seconds another caller can take over the lease; the old caller can sti
 
 ## Evidence
 
-- [Parallel cold reads test](https://github.com/hamza-paracha/teslabot/blob/2835d00ecfd08df826068da9a23baa13e9447314/tests/performance.test.ts#L31) checks that the burst uses one `vehicle_data` request.
-- [Concurrent budget test](https://github.com/hamza-paracha/teslabot/blob/2835d00ecfd08df826068da9a23baa13e9447314/tests/performance.test.ts#L126) gives four parallel requests a daily budget of two and checks that two are rejected.
-- The lease tests cover [takeover and owner-checked release](https://github.com/hamza-paracha/teslabot/blob/2835d00ecfd08df826068da9a23baa13e9447314/tests/lease.test.ts#L19), [writes after the successor releases](https://github.com/hamza-paracha/teslabot/blob/2835d00ecfd08df826068da9a23baa13e9447314/tests/lease.test.ts#L50), [loss of the outer lease under nested locks](https://github.com/hamza-paracha/teslabot/blob/2835d00ecfd08df826068da9a23baa13e9447314/tests/lease.test.ts#L64), [rotated token persistence](https://github.com/hamza-paracha/teslabot/blob/2835d00ecfd08df826068da9a23baa13e9447314/tests/lease.test.ts#L84), and [expiry without takeover](https://github.com/hamza-paracha/teslabot/blob/2835d00ecfd08df826068da9a23baa13e9447314/tests/lease.test.ts#L113).
+- [Parallel cold reads test](https://github.com/hamza-paracha/teslabot/blob/54dab29972209dfaeb010f4b223c72c5db6efcd7/tests/performance.test.ts#L31) checks that the burst uses one `vehicle_data` request.
+- [Concurrent budget test](https://github.com/hamza-paracha/teslabot/blob/54dab29972209dfaeb010f4b223c72c5db6efcd7/tests/performance.test.ts#L126) gives four parallel requests a daily budget of two and checks that two are rejected.
+- The lease tests cover [takeover and owner-checked release](https://github.com/hamza-paracha/teslabot/blob/54dab29972209dfaeb010f4b223c72c5db6efcd7/tests/lease.test.ts#L19), [writes after the successor releases](https://github.com/hamza-paracha/teslabot/blob/54dab29972209dfaeb010f4b223c72c5db6efcd7/tests/lease.test.ts#L50), [loss of the outer lease under nested locks](https://github.com/hamza-paracha/teslabot/blob/54dab29972209dfaeb010f4b223c72c5db6efcd7/tests/lease.test.ts#L64), [rotated token persistence](https://github.com/hamza-paracha/teslabot/blob/54dab29972209dfaeb010f4b223c72c5db6efcd7/tests/lease.test.ts#L84), and [expiry without takeover](https://github.com/hamza-paracha/teslabot/blob/54dab29972209dfaeb010f4b223c72c5db6efcd7/tests/lease.test.ts#L113).
 
 ## Revisit when
 
