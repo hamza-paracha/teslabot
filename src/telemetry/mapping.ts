@@ -104,12 +104,10 @@ export function recordTime(payload: { createdAt?: unknown }, now = Date.now()) {
 }
 
 // Signals that write the same stored value share one clock, so an older
-// fallback (estimated range, DC power) cannot replace a newer primary value.
+// fallback (estimated range) cannot replace a newer primary value.
 const STORED_AS: Record<string, string> = {
   RatedRange: "range_km",
   EstBatteryRange: "range_km",
-  ACChargingPower: "power_kw",
-  DCChargingPower: "power_kw",
 };
 
 // What the stored observation already reflects, so records that arrive late or
@@ -120,6 +118,7 @@ export interface SignalClock {
   signals: Record<string, string | null>;
   baseline: Record<string, string | null>;
   connectivity: { at: string | null; connected: boolean } | null;
+  power?: { ac?: number; dc?: number };
 }
 export const emptyClock = (): SignalClock => ({
   signals: {},
@@ -157,6 +156,7 @@ export function applyTelemetry(
     // A new car, or a fresh Fleet API read since the last record: values now
     // date from that read.
     clock.signals = {};
+    delete clock.power;
     clock.baseline = same
       ? Object.fromEntries(
           Object.entries(current.data.sections ?? {}).map(([name, section]) => [
@@ -179,16 +179,18 @@ export function applyTelemetry(
   const time = dated === null ? null : Date.parse(dated);
   const touched = new Set<string>();
   const before = { ...clock.signals };
-  let acPower: number | null = null;
-  let dcPower: number | null = null;
+  let powerUpdated = false;
   let key = "";
   const set = (section: string, apply: () => void) => {
-    const last = [before[key], clock.baseline[section]].filter(
+    const isPower = key === "ACChargingPower" || key === "DCChargingPower";
+    // Older snapshots only kept a shared power timestamp.
+    const priorKey = isPower && !(key in before) ? "power_kw" : key;
+    const last = [before[priorKey], clock.baseline[section]].filter(
       (value): value is string => !!value,
     );
     if (
       time === null
-        ? key in before || last.length
+        ? priorKey in before || last.length
         : last.some((value) => Date.parse(value) >= time)
     )
       return;
@@ -237,11 +239,17 @@ export function applyTelemetry(
         break;
       }
       case "ACChargingPower":
-        acPower = num(v) ?? acPower;
+      case "DCChargingPower": {
+        const kw = num(v);
+        if (kw !== null) {
+          const source = datum.key === "ACChargingPower" ? "ac" : "dc";
+          set("charging", () => {
+            (clock.power ??= {})[source] = Math.max(0, kw);
+            powerUpdated = true;
+          });
+        }
         break;
-      case "DCChargingPower":
-        dcPower = num(v) ?? dcPower;
-        break;
+      }
       case "TimeToFullCharge":
         set("charging", () => (base.charging.hours_remaining = num(v)));
         break;
@@ -364,12 +372,10 @@ export function applyTelemetry(
       }
     }
   }
-  // Within one record, active DC beats AC; idle DC must not mask AC power.
-  const power =
-    dcPower !== null && dcPower > 0 ? dcPower : (acPower ?? dcPower);
-  if (power !== null) {
-    key = STORED_AS.ACChargingPower;
-    set("charging", () => (base.charging.power_kw = Math.max(0, power)));
+  if (powerUpdated) {
+    const { ac, dc } = clock.power!;
+    base.charging.power_kw =
+      dc !== undefined && dc > 0 ? dc : (ac ?? dc ?? null);
   }
   const sections = { ...base.data.sections } as Record<
     string,

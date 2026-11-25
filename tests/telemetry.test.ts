@@ -289,6 +289,32 @@ describe("telemetry ordering of shared and undated values", () => {
       ).charging.power_kw,
     ).toBe(150);
   });
+  it.each(["forward", "reverse"])(
+    "keeps AC power when an idle DC record arrives in %s order",
+    (order) => {
+      const clock = emptyClock();
+      const ac = payload(at(-30000), { ACChargingPower: { doubleValue: 7.4 } });
+      const idleDc = payload(at(-20000), {
+        DCChargingPower: { doubleValue: 0 },
+      });
+      const [first, second] = order === "forward" ? [ac, idleDc] : [idleDc, ac];
+      const result = apply(apply(null, first, clock), second, clock);
+      expect(result.charging.power_kw).toBe(7.4);
+      const activeDc = apply(
+        result,
+        payload(at(-10000), { DCChargingPower: { doubleValue: 100 } }),
+        clock,
+      );
+      expect(activeDc.charging.power_kw).toBe(100);
+      expect(
+        apply(
+          activeDc,
+          payload(at(), { DCChargingPower: { doubleValue: 0 } }),
+          clock,
+        ).charging.power_kw,
+      ).toBe(7.4);
+    },
+  );
   it("never lets a retried undated record replace a timestamped reading", () => {
     const clock = emptyClock();
     const undated = payload(undefined, { BatteryLevel: { doubleValue: 30 } });
