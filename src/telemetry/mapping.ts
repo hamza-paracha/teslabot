@@ -119,13 +119,21 @@ const STORED_AS: Record<string, string> = {
 export interface SignalClock {
   signals: Record<string, string | null>;
   baseline: Record<string, string | null>;
-  connectivity: { at: string; connected: boolean } | null;
+  connectivity: { at: string | null; connected: boolean } | null;
 }
 export const emptyClock = (): SignalClock => ({
   signals: {},
   baseline: {},
   connectivity: null,
 });
+
+export function telemetryOnline(clock: SignalClock): boolean {
+  const event = clock.connectivity;
+  if (!event || event.connected) return true;
+  return Object.values(clock.signals).some(
+    (at) => at !== null && (event.at === null || at > event.at),
+  );
+}
 
 // Patch the stored observation with one telemetry record. A value is applied
 // only if the record is newer than the one that last set that value (and than
@@ -170,9 +178,9 @@ export function applyTelemetry(
   );
   const time = dated === null ? null : Date.parse(dated);
   const touched = new Set<string>();
-  // Compare against the clock as it was before this record, so two signals in
-  // one record that write the same value (AC and DC power) both still apply.
   const before = { ...clock.signals };
+  let acPower: number | null = null;
+  let dcPower: number | null = null;
   let key = "";
   const set = (section: string, apply: () => void) => {
     const last = [before[key], clock.baseline[section]].filter(
@@ -229,17 +237,11 @@ export function applyTelemetry(
         break;
       }
       case "ACChargingPower":
-      case "DCChargingPower": {
-        const kw = num(v);
-        if (
-          kw !== null &&
-          (kw > 0 ||
-            base.charging.power_kw === null ||
-            datum.key === "ACChargingPower")
-        )
-          set("charging", () => (base.charging.power_kw = Math.max(0, kw)));
+        acPower = num(v) ?? acPower;
         break;
-      }
+      case "DCChargingPower":
+        dcPower = num(v) ?? dcPower;
+        break;
       case "TimeToFullCharge":
         set("charging", () => (base.charging.hours_remaining = num(v)));
         break;
@@ -362,11 +364,20 @@ export function applyTelemetry(
       }
     }
   }
+  // Within one record, active DC beats AC; idle DC must not mask AC power.
+  const power =
+    dcPower !== null && dcPower > 0 ? dcPower : (acPower ?? dcPower);
+  if (power !== null) {
+    key = STORED_AS.ACChargingPower;
+    set("charging", () => (base.charging.power_kw = Math.max(0, power)));
+  }
   const sections = { ...base.data.sections } as Record<
     string,
     ReturnType<typeof freshness>
   >;
-  if (!touched.size) return same ? current : base;
+  if (!touched.size && same) return current;
+  base.vehicle.online = telemetryOnline(clock);
+  if (!touched.size) return base;
   for (const section of touched)
     if (time !== null && (section !== "location" || location)) {
       const previous = Date.parse(sections[section]?.observed_at ?? "");
@@ -382,13 +393,6 @@ export function applyTelemetry(
     ? new Date(Math.min(...times.map((t) => Date.parse(t)))).toISOString()
     : null;
   const fresh = freshness(oldest, now);
-  // A record from before the latest disconnect does not mean the car is back.
-  if (
-    !clock.connectivity ||
-    clock.connectivity.connected ||
-    (time !== null && time > Date.parse(clock.connectivity.at))
-  )
-    base.vehicle.online = true;
   base.data = {
     ...base.data,
     sections: sections as Observation["data"]["sections"],

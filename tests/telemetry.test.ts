@@ -278,6 +278,16 @@ describe("telemetry ordering of shared and undated values", () => {
       emptyClock(),
     );
     expect(result.charging.power_kw).toBe(150);
+    expect(
+      apply(
+        null,
+        payload(at(), {
+          DCChargingPower: { doubleValue: 150 },
+          ACChargingPower: { doubleValue: 0 },
+        }),
+        emptyClock(),
+      ).charging.power_kw,
+    ).toBe(150);
   });
   it("never lets a retried undated record replace a timestamped reading", () => {
     const clock = emptyClock();

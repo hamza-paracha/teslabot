@@ -20,7 +20,9 @@ function print(step: StepResult) {
     ? `applied ${step.ingest.applied}, ignored ${step.ingest.ignored ?? "n/a"}`
     : step.kind === "lost"
       ? "not delivered"
-      : "";
+      : step.kind === "lost response"
+        ? "response discarded"
+        : "";
   const reminders = step.snapshot.reminders as Record<string, number>;
   console.log(
     `${step.failures.length ? "FAIL" : " ok "}  ${step.name}\n` +

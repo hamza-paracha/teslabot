@@ -35,6 +35,7 @@
               "detailedChargeStateValue": "DetailedChargeStateDisconnected"
             },
             "ChargeLimitSoc": 80,
+            "ACChargingPower": 0,
             "Locked": true,
             "InsideTemp": 17,
             "OutsideTemp": 6,
@@ -58,6 +59,7 @@
           "data": {
             "BatteryLevel": 57,
             "RatedRange": 172,
+            "DCChargingPower": 7,
             "InsideTemp": 20
           }
         }
@@ -69,7 +71,8 @@
     },
     {
       "id": "arrival",
-      "name": "Arriving",
+      "name": "Arriving: Worker commits, but the relay loses the response",
+      "loseResponse": true,
       "batch": [
         {
           "car": "owner",
@@ -78,14 +81,30 @@
           "data": {
             "BatteryLevel": 48,
             "RatedRange": 146,
+            "DCChargingPower": 0,
             "OutsideTemp": 5,
             "Odometer": 11214
           }
         }
       ],
       "expect": {
-        "applied": 1,
-        "owner.battery.percentage": 48
+        "owner.battery.percentage": 48,
+        "owner.data.sections.battery.observed_at": {
+          "at": -120
+        }
+      }
+    },
+    {
+      "name": "Relay retries with the same batch ID after losing the response",
+      "repeat": "arrival",
+      "expect": {
+        "applied": 0,
+        "ignored": 1,
+        "failed_accounts": 0,
+        "owner.battery.percentage": 48,
+        "owner.data.sections.battery.observed_at": {
+          "at": -120
+        }
       }
     },
     {
@@ -138,15 +157,6 @@
         "reminders.owner": 1,
         "reminders.driver": 0,
         "tesla_requests": 0
-      }
-    },
-    {
-      "name": "Repeated batch: the relay retries a batch the Worker already applied",
-      "repeat": "arrival",
-      "expect": {
-        "applied": 0,
-        "ignored": 1,
-        "owner.battery.percentage": 48
       }
     },
     {
@@ -308,6 +318,21 @@
       }
     },
     {
+      "name": "Old batch redelivered after newer data",
+      "repeat": "arrival",
+      "expect": {
+        "applied": 0,
+        "ignored": 1,
+        "failed_accounts": 0,
+        "owner.battery.percentage": 46,
+        "owner.data.sections.battery.observed_at": {
+          "at": -60
+        },
+        "reminders.owner": 1,
+        "tesla_requests": 0
+      }
+    },
+    {
       "name": "Next alert run",
       "cron": true,
       "expect": {
@@ -321,6 +346,7 @@
     "owner.battery.percentage": 46,
     "owner.battery.range_km": 225.3,
     "owner.charging.connected": false,
+    "owner.charging.power_kw": 0,
     "owner.vehicle.locked": true,
     "owner.vehicle.online": false,
     "owner.vehicle.sentry_mode": false,
