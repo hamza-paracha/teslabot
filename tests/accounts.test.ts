@@ -4,6 +4,7 @@ import {
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
 import app from "../src/index";
+import { hash } from "../src/security/crypto";
 import { Store } from "../src/storage/database";
 import { normalize } from "../src/tesla/normalization";
 import { TeslaClient } from "../src/tesla/client";
@@ -17,18 +18,23 @@ const b64 = (value: unknown) =>
     .replace(/\//g, "_");
 const idToken = (sub: string, aud = "client-id") =>
   `${b64({ alg: "RS256" })}.${b64({ sub, aud, iss: "https://auth.tesla.com/oauth2/v3" })}.sig`;
-function teslaAs(sub: string) {
-  const upstream = vi.fn(async (input: RequestInfo | URL) => {
-    const url = new URL(String(input));
-    if (url.hostname === "fleet-auth.prd.vn.cloud.tesla.com")
-      return Response.json({
-        ...tokens(),
-        refresh_token: "refresh-" + sub,
-        id_token: idToken(sub),
-        scope: "openid offline_access vehicle_device_data",
-      });
-    throw Error("unexpected upstream " + url);
-  });
+function teslaAs(subject: string | ((code: string) => string)) {
+  const upstream = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (url.hostname === "fleet-auth.prd.vn.cloud.tesla.com") {
+        const code = (init?.body as URLSearchParams).get("code")!;
+        const sub = typeof subject === "string" ? subject : subject(code);
+        return Response.json({
+          ...tokens(),
+          refresh_token: "refresh-" + sub,
+          id_token: idToken(sub),
+          scope: "openid offline_access vehicle_device_data",
+        });
+      }
+      throw Error("unexpected upstream " + url);
+    },
+  );
   vi.stubGlobal("fetch", upstream);
   return upstream;
 }
@@ -46,14 +52,16 @@ async function invite(label = "Friend") {
 }
 // Drive the browser side of Tesla sign-in and return the session cookie.
 async function signIn(path: string) {
-  const start = await req(path, {}, false);
+  return finishSignIn(await req(path, {}, false));
+}
+async function finishSignIn(start: Response, code = "fixture") {
   if (start.status !== 303) return { status: start.status, start };
   const state = new URL(start.headers.get("Location")!).searchParams.get(
     "state",
   );
   const browser = start.headers.get("Set-Cookie")!.split(";")[0];
   const callback = await req(
-    `/auth/callback?state=${state}&code=fixture`,
+    `/auth/callback?state=${state}&code=${encodeURIComponent(code)}`,
     { headers: { Cookie: browser } },
     false,
   );
@@ -143,6 +151,126 @@ describe("invite-only accounts", () => {
     expect(await accountOf(again.session!)).toBe(account);
     const invites = (await (await req("/admin/invites")).json()) as any;
     expect(invites.invites[0]).toMatchObject({ status: "used", account });
+  });
+
+  it("lets only one Tesla identity claim an invite when both signups started", async () => {
+    const path = "/auth/signup?invite=" + (await invite());
+    const attempts = await Promise.all([
+      req(path, {}, false),
+      req(path, {}, false),
+    ]);
+    expect(attempts.map((attempt) => attempt.status)).toEqual([303, 303]);
+    teslaAs((code) => code);
+    const results = await Promise.all(
+      attempts.map((attempt, i) => finishSignIn(attempt, "driver-" + i)),
+    );
+    expect(results.map((result) => result.status).sort()).toEqual([303, 403]);
+    expect(results.find((result) => result.status === 403)).toMatchObject({
+      error: "invite_invalid",
+      session: undefined,
+    });
+    const winner = results.findIndex((result) => result.status === 303);
+    const account = await accountOf(results[winner].session!);
+    expect(
+      await e.DB.prepare("SELECT id FROM accounts WHERE id<>''").all(),
+    ).toMatchObject({ results: [{ id: account }] });
+    expect(await e.DB.prepare("SELECT account FROM invites").first()).toEqual({
+      account,
+    });
+    expect(await store.forAccount(account).get("owner_tokens")).toMatchObject({
+      refresh_token: "refresh-driver-" + winner,
+    });
+  });
+
+  it("signs in the same Tesla identity without spending both invites", async () => {
+    const codes = await Promise.all([invite("Left"), invite("Right")]);
+    const attempts = await Promise.all(
+      codes.map((code) => req("/auth/signup?invite=" + code, {}, false)),
+    );
+    expect(attempts.map((attempt) => attempt.status)).toEqual([303, 303]);
+    teslaAs("same-driver");
+    const results = await Promise.all(
+      attempts.map((attempt, i) => finishSignIn(attempt, "grant-" + i)),
+    );
+    expect(results.map((result) => result.status)).toEqual([303, 303]);
+    const account = await accountOf(results[0].session!);
+    expect((await as(results[1].session!, "/auth/status")).status).toBe(200);
+    expect(
+      await e.DB.prepare("SELECT id FROM accounts WHERE id<>''").all(),
+    ).toMatchObject({ results: [{ id: account }] });
+    expect(
+      await e.DB.prepare(
+        "SELECT account FROM invites WHERE used_at IS NOT NULL",
+      ).all(),
+    ).toMatchObject({ results: [{ account }] });
+  });
+
+  it.each(["revoked", "expired"])(
+    "does not create an account if its invite is %s after OAuth begins",
+    async (status) => {
+      const code = await invite();
+      const start = await req("/auth/signup?invite=" + code, {}, false);
+      expect(start.status).toBe(303);
+      const id = await hash(code);
+      if (status === "revoked") {
+        expect((await req("/admin/invites/revoke", json({ id }))).status).toBe(
+          200,
+        );
+      } else {
+        await e.DB.prepare("UPDATE invites SET expires=0 WHERE hash=?")
+          .bind(id)
+          .run();
+      }
+      teslaAs("driver");
+      expect(await finishSignIn(start)).toMatchObject({
+        status: 403,
+        error: "invite_invalid",
+        session: undefined,
+      });
+      expect(await e.DB.prepare("SELECT id FROM accounts").all()).toMatchObject(
+        {
+          results: [{ id: "" }],
+        },
+      );
+      expect(await e.DB.prepare("SELECT 1 FROM records").all()).toMatchObject({
+        results: [],
+      });
+    },
+  );
+
+  it("leaves the invite unused and creates no account when saving tokens fails", async () => {
+    const path = "/auth/signup?invite=" + (await invite());
+    teslaAs("driver");
+    await e.DB.prepare(
+      "CREATE TRIGGER fail_owner_tokens BEFORE INSERT ON records WHEN NEW.key LIKE '%:owner_tokens' BEGIN SELECT RAISE(ABORT, 'injected write failure'); END",
+    ).run();
+    try {
+      expect(await signIn(path)).toMatchObject({
+        status: 500,
+        error: "internal_error",
+        session: undefined,
+      });
+      expect(await e.DB.prepare("SELECT id FROM accounts").all()).toMatchObject(
+        {
+          results: [{ id: "" }],
+        },
+      );
+      expect(
+        await e.DB.prepare("SELECT used_at, account FROM invites").first(),
+      ).toEqual({ used_at: null, account: null });
+      for (const table of ["records", "sessions"])
+        expect(
+          await e.DB.prepare("SELECT 1 FROM " + table).all(),
+        ).toMatchObject({ results: [] });
+    } finally {
+      await e.DB.prepare("DROP TRIGGER fail_owner_tokens").run();
+    }
+    const retry = await signIn(path);
+    expect(retry.status).toBe(303);
+    const account = await accountOf(retry.session!);
+    expect(await store.forAccount(account).get("owner_tokens")).toMatchObject({
+      refresh_token: "refresh-driver",
+    });
   });
   it("refuses Tesla sign-in without an account or invite and stores nothing", async () => {
     teslaAs("stranger");

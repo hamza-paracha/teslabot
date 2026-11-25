@@ -1,7 +1,7 @@
 import type { Env } from "../types";
 import { AppError } from "../types";
 import { Store } from "../storage/database";
-import { hash, random } from "../security/crypto";
+import { hash, random, seal } from "../security/crypto";
 import {
   cookie,
   makeSession,
@@ -25,6 +25,11 @@ const redirect = (path: string, headers: HeadersInit = {}) =>
 const browserCookie = (value: string, age = 600) =>
   `__Host-ev_oauth=${value}; Secure; HttpOnly; SameSite=Lax; Path=/; Max-Age=${age}`;
 export const newAccountId = () => random().replace(/-/g, "").slice(0, 24);
+
+const linkedAccount = (e: Env, subjectHash: string) =>
+  e.DB.prepare("SELECT id, disabled FROM accounts WHERE tesla_sub_hash=?")
+    .bind(subjectHash)
+    .first<{ id: string; disabled: number }>();
 
 // Begin a browser-bound Tesla authorization. connect/reconnect belong to an
 // existing account; signup carries an invite and signin carries nothing.
@@ -128,13 +133,7 @@ export async function oauthCallback(
   if (!tokens.refresh_token) throw new AppError("missing_refresh_token", 502);
   const subject = teslaSubject(tokens, e);
   const subjectHash = subject ? await hash("tesla:" + subject) : null;
-  const linked = subjectHash
-    ? await e.DB.prepare(
-        "SELECT id, disabled FROM accounts WHERE tesla_sub_hash=?",
-      )
-        .bind(subjectHash)
-        .first<{ id: string; disabled: number }>()
-    : null;
+  const linked = subjectHash ? await linkedAccount(e, subjectHash) : null;
   let account: string, role: "operator" | "user";
   if (
     transaction.purpose === "connect" ||
@@ -153,30 +152,23 @@ export async function oauthCallback(
     );
   } else {
     if (!subjectHash) throw new AppError("tesla_identity_unavailable", 502);
-    if (linked) {
-      // An existing driver signing in again, even through an invite link.
-      if (linked.disabled) throw new AppError("account_disabled", 403);
-      account = linked.id;
+    const inviteHash =
+      transaction.purpose === "signup" ? transaction.invite_hash : null;
+    if (!linked && !inviteHash) throw new AppError("invite_required", 403);
+    const created =
+      !linked && inviteHash
+        ? await signUp(e, ctx, inviteHash, subjectHash, tokens)
+        : null;
+    if (created) {
+      account = created;
+    } else {
+      // A concurrent signup may have linked this identity after the first lookup.
+      const existing = linked ?? (await linkedAccount(e, subjectHash));
+      if (!existing) throw new AppError("invite_invalid", 403);
+      if (existing.disabled) throw new AppError("account_disabled", 403);
+      account = existing.id;
       await signIn(new Store(e, ctx, account), tokens);
-    } else if (transaction.purpose === "signup" && transaction.invite_hash) {
-      account = newAccountId();
-      const now = Date.now();
-      // Creating the account and consuming the invite commit together; a used
-      // or expired invite creates nothing.
-      const [created, used] = await e.DB.batch([
-        e.DB.prepare(
-          "INSERT INTO accounts(id,tesla_sub_hash,label,created) SELECT ?,?,label,? FROM invites WHERE hash=? AND used_at IS NULL AND expires>?",
-        ).bind(account, subjectHash, now, transaction.invite_hash, now),
-        e.DB.prepare(
-          "UPDATE invites SET used_at=?, account=? WHERE hash=? AND used_at IS NULL AND expires>? AND EXISTS (SELECT 1 FROM accounts WHERE id=?)",
-        ).bind(now, account, transaction.invite_hash, now, account),
-      ]);
-      if (!created.meta.changes || !used.meta.changes)
-        throw new AppError("invite_invalid", 403);
-      const store = new Store(e, ctx, account);
-      await store.put("owner_tokens", tokens);
-      await store.audit("account_created");
-    } else throw new AppError("invite_required", 403);
+    }
     role = "user";
   }
   const session = await makeSession(e, account, role);
@@ -184,6 +176,34 @@ export async function oauthCallback(
   response.headers.append("Set-Cookie", browserCookie("", 0));
   response.headers.append("Set-Cookie", sessionCookie(session));
   return response;
+}
+
+async function signUp(
+  e: Env,
+  ctx: ExecutionContext | undefined,
+  inviteHash: string,
+  subjectHash: string,
+  tokens: Tokens,
+) {
+  const account = newAccountId();
+  const store = new Store(e, ctx, account);
+  const key = store.key("owner_tokens");
+  const value = await seal(tokens, e.TOKEN_ENCRYPTION_KEY!, key);
+  const now = Date.now();
+  const [created] = await e.DB.batch([
+    e.DB.prepare(
+      "INSERT INTO accounts(id,tesla_sub_hash,label,created) SELECT ?,?,label,? FROM invites WHERE hash=? AND used_at IS NULL AND expires>? ON CONFLICT(tesla_sub_hash) DO NOTHING",
+    ).bind(account, subjectHash, now, inviteHash, now),
+    e.DB.prepare(
+      "UPDATE invites SET used_at=?, account=? WHERE hash=? AND used_at IS NULL AND expires>? AND EXISTS (SELECT 1 FROM accounts WHERE id=?)",
+    ).bind(now, account, inviteHash, now, account),
+    e.DB.prepare(
+      "INSERT INTO records(key,value) SELECT ?,? FROM invites WHERE hash=? AND account=? AND used_at=?",
+    ).bind(key, value, inviteHash, account, now),
+  ]);
+  if (!created.meta.changes) return null;
+  await store.audit("account_created");
+  return account;
 }
 
 async function connect(
