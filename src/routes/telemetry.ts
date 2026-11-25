@@ -83,6 +83,14 @@ export async function disableTelemetry(e: Env, store: Store) {
     .bind(store.account)
     .first();
   if (!mapped && !(selected && stored.owner_tokens)) return false;
+  // A car mapped to another account is that account's to disable.
+  if (
+    !mapped &&
+    (await e.DB.prepare("SELECT 1 FROM telemetry_vehicles WHERE vin_hash=?")
+      .bind(await vinHash(selected!.vin))
+      .first())
+  )
+    return false;
   try {
     if (selected)
       await new TeslaClient(store).request(

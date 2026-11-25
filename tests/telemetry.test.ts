@@ -710,6 +710,24 @@ describe("telemetry routes", () => {
     );
     expect(upstream.mock.calls[0][1]?.method).toBe("DELETE");
   });
+  it("leaves a car mapped to another account alone on disable", async () => {
+    configure();
+    await store.putMany({ selected: { id, vin }, owner_tokens: tokens() });
+    await e.DB.prepare(
+      "INSERT INTO telemetry_vehicles(vin_hash,account,vehicle_id,created) VALUES(?,?,?,?)",
+    )
+      .bind(await hash("vin:" + vin), "other-account", id, Date.now())
+      .run();
+    const upstream = vi.fn(async () => Response.json({}));
+    vi.stubGlobal("fetch", upstream);
+    const response = await req("/api/telemetry/disable", { method: "POST" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ removed: false });
+    expect(upstream).not.toHaveBeenCalled();
+    expect(
+      await e.DB.prepare("SELECT account FROM telemetry_vehicles").first(),
+    ).toMatchObject({ account: "other-account" });
+  });
   it("removes the configuration from the car on disable", async () => {
     configure();
     await store.putMany({
