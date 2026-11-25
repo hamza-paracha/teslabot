@@ -126,10 +126,19 @@ export const emptyClock = (): SignalClock => ({
   connectivity: null,
 });
 
-export function telemetryOnline(clock: SignalClock): boolean {
+export function telemetryOnline(
+  clock: SignalClock,
+  current?: Observation,
+): boolean {
   const event = clock.connectivity;
   if (!event || event.connected) return true;
-  return Object.values(clock.signals).some(
+  const times =
+    current?.data.source === "tesla_fleet_api"
+      ? Object.values(current.data.sections ?? {}).map(
+          (section) => section.observed_at,
+        )
+      : [...Object.values(clock.signals), ...Object.values(clock.baseline)];
+  return times.some(
     (at) => at !== null && (event.at === null || at > event.at),
   );
 }

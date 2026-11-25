@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { randomUUID } from "node:crypto";
+import { syntheticTesla } from "../scripts/lib/harness";
 import { applyTelemetry, emptyClock } from "../src/telemetry/mapping";
 import { normalize } from "../src/tesla/normalization";
 import { hash } from "../src/security/crypto";
@@ -471,6 +473,80 @@ describe("telemetry routes", () => {
       ).status,
     ).toBe(403);
   });
+  it.each(["replay first", "disconnect first"])(
+    "keeps a fresh Fleet API reading online after a buffered disconnect (%s)",
+    async (order) => {
+      configure();
+      await store.putMany({
+        selected: { id, vin },
+        owner_tokens: tokens(),
+        telemetry_state: {
+          enabled_at: at(),
+          expires_at: at(86400000),
+          connected: null,
+          last_record_at: null,
+          rotated_at: null,
+        },
+      });
+      await e.DB.prepare(
+        "INSERT INTO telemetry_vehicles(vin_hash,account,vehicle_id,created) VALUES(?,?,?,?)",
+      )
+        .bind(await hash("vin:" + vin), "", id, Date.now())
+        .run();
+      const replayed = {
+        topic: "tesla_V",
+        payload: {
+          vin,
+          createdAt: at(-360000),
+          data: [{ key: "BatteryLevel", value: { doubleValue: 60 } }],
+        },
+      };
+      const disconnect = (createdAt: string) => ({
+        topic: "tesla_connectivity",
+        payload: { vin, createdAt, status: "DISCONNECTED" },
+      });
+      const deliver = async (record: unknown) => {
+        const request = json({ records: [record] }, ingestToken);
+        const response = await req(
+          "/telemetry/ingest",
+          {
+            ...request,
+            headers: { ...request.headers, "Idempotency-Key": randomUUID() },
+          },
+          false,
+        );
+        expect(response.status).toBe(200);
+        return response.json();
+      };
+      expect(await deliver(replayed)).toMatchObject({ applied: 1 });
+
+      const tesla = syntheticTesla();
+      const refreshedAt = Date.now() - 10000;
+      tesla.car.observed_at = () => refreshedAt;
+      vi.stubGlobal("fetch", tesla.fetch);
+      const refresh = await req("/api/vehicle/summary");
+      expect(refresh.status).toBe(200);
+      expect(await refresh.json()).toMatchObject({
+        battery: { percentage: 71 },
+        data: { source: "tesla_fleet_api" },
+      });
+      expect(tesla.count("vehicle_data")).toBe(1);
+
+      const buffered = disconnect(at(-400000));
+      if (order === "disconnect first") await deliver(buffered);
+      expect(await deliver(replayed)).toMatchObject({ applied: 0, ignored: 1 });
+      if (order === "replay first") await deliver(buffered);
+      expect(await store.get("summary")).toMatchObject({
+        battery: { percentage: 71 },
+        vehicle: { online: true },
+        data: { observed_at: new Date(refreshedAt).toISOString() },
+      });
+      await deliver(disconnect(at()));
+      expect(await store.get("summary")).toMatchObject({
+        vehicle: { online: false },
+      });
+    },
+  );
   it("acknowledges only committed writes and skips healthy accounts on retry", async () => {
     configure();
     const driver = store.forAccount("driver");

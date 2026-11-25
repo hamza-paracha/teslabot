@@ -364,7 +364,7 @@ async function ingest(
                   ...summary,
                   vehicle: {
                     ...summary.vehicle,
-                    online: telemetryOnline(clock),
+                    online: telemetryOnline(clock, summary),
                   },
                 };
             }
