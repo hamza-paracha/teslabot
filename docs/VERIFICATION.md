@@ -26,6 +26,14 @@ The integrated `account-to-agent workflow` test in `tests/workflow.test.ts` uses
 
 Other tests cover state expiry/replay and wrong-browser rejection, denied consent, partner registration, permissions, sleeping/offline vehicles, timeouts, rate limits, budgets, stale data, route assumptions, sensor availability, quiet hours across DST, cancellation/recurring instances and delivery deduplication.
 
+## Without a Tesla
+
+These commands use a local D1 database, freshly generated credentials and a synthetic Tesla upstream. They make no network requests. `npm test` runs the same scenarios.
+
+- `npm run demo` asks "Can I make the round trip?" through the real `tesla_plan_trip` MCP tool, Worker routes, cache and trip planner. It asks once with the car online and a fresh reading, and once with the car asleep and its last reading three hours old. For each question it prints the reading's timestamp and age, whether it was a cache hit, every Tesla request made, and the answer, or why the planner withheld one. Use `--scenario fresh|asleep` for one scenario and `--json` for the raw tool responses.
+- `npm run bench` measures parallel cold, warm, mixed and sleeping-car reads. It reports Tesla requests and p50/p95 latency along with the command and environment, and exits non-zero if the cache, shared refresh or request budget invariants fail. See [benchmarks](BENCHMARKS.md).
+- `npm run telemetry:replay` replays a synthetic drive through the telemetry ingest path and alert runner. It checks the final per-account reading and reminder count against [the fixture](../tests/fixtures/telemetry-drive.json); see [live data](TELEMETRY_SETUP.md#testing).
+
 ## Safe deployed checks
 
 For an operator with the deployed public key available locally:

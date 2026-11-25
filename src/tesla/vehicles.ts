@@ -16,6 +16,7 @@ export const VEHICLE_KEYS = [
   "summary",
   "previous_summary",
   "observation_history",
+  "refresh_failure",
   "vehicles",
   "trips",
   "briefings",
@@ -81,6 +82,7 @@ export async function discoverVehicles(store: Store, refresh: boolean) {
               "summary",
               "previous_summary",
               "observation_history",
+              "refresh_failure",
             ]),
           ]
         : [],

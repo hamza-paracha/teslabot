@@ -14,6 +14,9 @@ import {
 } from "../context/observations";
 import {
   applyTelemetry,
+  emptyClock,
+  recordTime,
+  type SignalClock,
   LOCATION_FIELDS,
   TELEMETRY_FIELDS,
   type TelemetryPayload,
@@ -27,6 +30,8 @@ export interface TelemetryState {
   connected: boolean | null;
   last_record_at: string | null;
   rotated_at: string | null;
+  // Ordering state for late and repeated records; internal, not returned.
+  clock?: SignalClock;
 }
 const ingestSchema = z
   .object({
@@ -107,7 +112,10 @@ export async function telemetryRoute(
       available: telemetryAvailable(e),
       enabled: !!mapped && mapped.vehicle_id === stored.selected?.id,
       pairing_url: pairingUrl(e),
-      state: stored.telemetry_state,
+      state: stored.telemetry_state && {
+        ...stored.telemetry_state,
+        clock: undefined,
+      },
       fields: Object.keys(TELEMETRY_FIELDS),
     };
     // Checking Tesla is explicit, since each call counts against the budget.
@@ -274,6 +282,7 @@ async function ingest(
         .all<{ vin_hash: string; account: string; vehicle_id: string }>()
     : { results: [] };
   let applied = 0,
+    ignored = 0,
     failed = 0;
   const outcomes = await Promise.allSettled(
     results.map(async (row) => {
@@ -295,18 +304,35 @@ async function ingest(
           const state: TelemetryState | null = stored.telemetry_state;
           if (!state) return;
           const previous = summary;
+          const clock = state.clock ?? emptyClock();
+          // Records may arrive late, out of order or more than once (the relay
+          // retries a batch whose response was lost); only newer values apply.
           for (const record of list) {
             const kind = record.topic.split("_").pop();
             if (kind === "V") {
-              summary = applyTelemetry(
+              const next = applyTelemetry(
                 summary,
                 record.payload as TelemetryPayload,
                 row.vehicle_id,
                 e.ENABLE_LOCATION === "true",
+                Date.now(),
+                clock,
               );
-              applied++;
+              if (next === summary) ignored++;
+              else applied++;
+              summary = next;
             } else if (kind === "connectivity") {
+              // An undated event cannot be ordered; it only sets a first state.
+              const dated = recordTime(record.payload);
+              if (
+                clock.connectivity &&
+                (!dated ||
+                  Date.parse(dated) <= Date.parse(clock.connectivity.at))
+              )
+                continue;
+              const at = dated ?? new Date().toISOString();
               state.connected = record.payload.status === "CONNECTED";
+              clock.connectivity = { at, connected: state.connected };
               if (summary && !state.connected)
                 summary = {
                   ...summary,
@@ -314,6 +340,7 @@ async function ingest(
                 };
             }
           }
+          state.clock = clock;
           state.last_record_at = new Date().toISOString();
           const writes: Record<string, unknown> = { telemetry_state: state };
           if (summary) writes.summary = summary;
@@ -345,6 +372,7 @@ async function ingest(
   return {
     received: records.length,
     applied,
+    ignored,
     unknown_vehicles: hashes.size - results.length,
     failed_accounts: failed,
   };

@@ -94,23 +94,72 @@ export interface TelemetryPayload {
   data?: Array<{ key?: string; value?: Value }>;
 }
 
-// Patch the stored observation with one telemetry record. Each section keeps
-// the time of the record that last touched it; the observation as a whole is
-// only as fresh as its oldest section, so stale sections still fall back to a
-// normal Fleet API read.
+// Source time of a record, or null when it is missing or implausibly far in
+// the future. Arrival time is not a substitute: a retried record would look new.
+export function recordTime(payload: { createdAt?: unknown }, now = Date.now()) {
+  const created = Date.parse(String(payload.createdAt ?? ""));
+  return Number.isFinite(created) && created <= now + 60000
+    ? new Date(created).toISOString()
+    : null;
+}
+
+// Signals that write the same stored value share one clock, so an older
+// fallback (estimated range, DC power) cannot replace a newer primary value.
+const STORED_AS: Record<string, string> = {
+  RatedRange: "range_km",
+  EstBatteryRange: "range_km",
+  ACChargingPower: "power_kw",
+  DCChargingPower: "power_kw",
+};
+
+// What the stored observation already reflects, so records that arrive late or
+// twice cannot overwrite newer values: the source time of each stored value
+// last applied (null when its record was undated), the section times of the
+// Fleet API read the patches build on, and the latest connectivity event.
+export interface SignalClock {
+  signals: Record<string, string | null>;
+  baseline: Record<string, string | null>;
+  connectivity: { at: string; connected: boolean } | null;
+}
+export const emptyClock = (): SignalClock => ({
+  signals: {},
+  baseline: {},
+  connectivity: null,
+});
+
+// Patch the stored observation with one telemetry record. A value is applied
+// only if the record is newer than the one that last set that value (and than
+// the Fleet API read underneath); otherwise the observation is returned
+// unchanged. An undated record can only fill a value nothing has set yet, and
+// does not make its section fresh. Each section keeps the time of its newest value; the observation
+// as a whole is only as fresh as its oldest section, so stale sections still
+// fall back to a normal Fleet API read.
 export function applyTelemetry(
   current: Observation | null,
   payload: TelemetryPayload,
   vehicleId: string,
   location: boolean,
   now = Date.now(),
+  clock: SignalClock = emptyClock(),
 ): Observation {
-  const created = Date.parse(payload.createdAt ?? "");
-  const at = new Date(
-    Number.isFinite(created) && created <= now + 60000 ? created : now,
-  ).toISOString();
+  const dated = recordTime(payload, now);
+  const at = dated ?? new Date(now).toISOString();
+  const same = current?.vehicle.id === vehicleId;
+  if (!same || current.data.source !== "tesla_fleet_telemetry") {
+    // A new car, or a fresh Fleet API read since the last record: values now
+    // date from that read.
+    clock.signals = {};
+    clock.baseline = same
+      ? Object.fromEntries(
+          Object.entries(current.data.sections ?? {}).map(([name, section]) => [
+            name,
+            section.observed_at,
+          ]),
+        )
+      : {};
+  }
   const base: Observation = structuredClone(
-    current?.vehicle.id === vehicleId
+    same
       ? current
       : normalize(
           { charge_state: {}, climate_state: {}, vehicle_state: {} },
@@ -119,12 +168,28 @@ export function applyTelemetry(
           location,
         ),
   );
+  const time = dated === null ? null : Date.parse(dated);
   const touched = new Set<string>();
+  // Compare against the clock as it was before this record, so two signals in
+  // one record that write the same value (AC and DC power) both still apply.
+  const before = { ...clock.signals };
+  let key = "";
   const set = (section: string, apply: () => void) => {
+    const last = [before[key], clock.baseline[section]].filter(
+      (value): value is string => !!value,
+    );
+    if (
+      time === null
+        ? key in before || last.length
+        : last.some((value) => Date.parse(value) >= time)
+    )
+      return;
     apply();
+    clock.signals[key] = dated;
     touched.add(section);
   };
   for (const datum of payload.data ?? []) {
+    key = STORED_AS[datum.key ?? ""] ?? datum.key ?? "";
     const v = datum.value;
     // "invalid" means the signal is temporarily unavailable: keep the last
     // known value and its timestamp rather than recording an unknown as new.
@@ -290,7 +355,7 @@ export function applyTelemetry(
             base.location = {
               latitude: point.latitude ?? null,
               longitude: point.longitude ?? null,
-              observed_at: at,
+              observed_at: dated,
             };
           });
         break;
@@ -301,9 +366,15 @@ export function applyTelemetry(
     string,
     ReturnType<typeof freshness>
   >;
+  if (!touched.size) return same ? current : base;
   for (const section of touched)
-    if (section !== "location" || location)
-      sections[section] = freshness(at, now);
+    if (time !== null && (section !== "location" || location)) {
+      const previous = Date.parse(sections[section]?.observed_at ?? "");
+      sections[section] = freshness(
+        previous > time ? sections[section].observed_at : at,
+        now,
+      );
+    }
   const times = Object.values(sections)
     .map((section) => section.observed_at)
     .filter((value): value is string => !!value);
@@ -311,7 +382,13 @@ export function applyTelemetry(
     ? new Date(Math.min(...times.map((t) => Date.parse(t)))).toISOString()
     : null;
   const fresh = freshness(oldest, now);
-  base.vehicle.online = true;
+  // A record from before the latest disconnect does not mean the car is back.
+  if (
+    !clock.connectivity ||
+    clock.connectivity.connected ||
+    (time !== null && time > Date.parse(clock.connectivity.at))
+  )
+    base.vehicle.online = true;
   base.data = {
     ...base.data,
     sections: sections as Observation["data"]["sections"],

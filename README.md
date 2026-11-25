@@ -57,4 +57,12 @@ npm run check
 npm run plugin:build
 ```
 
-That checks the code and builds the plugin into `dist/teslabot`. To connect a car, you'll also need your own Tesla developer app, Cloudflare setup and credentials. Start with the [setup docs](docs/README.md).
+That checks the code and builds the plugin into `dist/teslabot`.
+
+### Try it without a Tesla
+
+```sh
+npm run demo
+```
+
+This asks "Can I make the round trip?" through the real MCP tool, cache and trip planner, with a synthetic car and a local database. It needs no credentials, car or location. With a fresh reading you get an estimate. With a sleeping car you get no estimate, and the demo shows the reading's age, which Tesla requests were made (no wake) and why the planner withheld the answer. `npm run bench` and `npm run telemetry:replay` measure parallel reads and replay a synthetic telemetry drive the same way. See [verification](docs/VERIFICATION.md#without-a-tesla) and [benchmarks](docs/BENCHMARKS.md). To connect a car, you'll also need your own Tesla developer app, Cloudflare setup and credentials. Start with the [setup docs](docs/README.md).

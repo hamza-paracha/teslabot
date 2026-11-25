@@ -19,3 +19,5 @@ __pycache__/
 wrangler.jsonc
 telemetry/wrangler.jsonc
 public/.well-known/appspecific/com.tesla.3p.public-key.pem
+
+/.agent-local/

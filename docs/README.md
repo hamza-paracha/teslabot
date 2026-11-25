@@ -16,7 +16,8 @@ Start with the [project README](../README.md) for use cases and the tool list.
 
 - [Architecture](ARCHITECTURE.md) — source layout, storage and request flow.
 - [HTTP API](HTTP_API.md) — protected routes and response behavior.
-- [Verification](VERIFICATION.md) — tests, smoke checks and deployment acceptance checklist.
+- [Verification](VERIFICATION.md) — tests, the no-Tesla demo, smoke checks and deployment acceptance checklist.
+- [Benchmarks](BENCHMARKS.md) — concurrency workload, method and an example synthetic run.
 - [Troubleshooting](TROUBLESHOOTING.md) — error codes and recovery steps.
 - [Security](SECURITY.md) — threat model, credentials and operational boundaries.
 

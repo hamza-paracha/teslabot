@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { applyTelemetry } from "../src/telemetry/mapping";
+import { applyTelemetry, emptyClock } from "../src/telemetry/mapping";
 import { normalize } from "../src/tesla/normalization";
 import { hash } from "../src/security/crypto";
 import { e, store, vin, tokens, req } from "./helpers/app";
@@ -139,6 +139,168 @@ describe("telemetry mapping", () => {
   });
 });
 
+describe("telemetry ordering", () => {
+  const read = (minutesAgo: number) =>
+    normalize(
+      {
+        charge_state: {
+          battery_level: 50,
+          battery_range: 150,
+          timestamp: Date.now() - minutesAgo * 60000,
+        },
+        climate_state: { timestamp: Date.now() - minutesAgo * 60000 },
+        vehicle_state: {
+          locked: true,
+          timestamp: Date.now() - minutesAgo * 60000,
+        },
+      },
+      id,
+      "Car",
+      false,
+    );
+  const record = (
+    secondsAgo: number,
+    data: Record<string, Record<string, unknown>>,
+  ) => ({
+    vin,
+    createdAt: at(-secondsAgo * 1000),
+    data: Object.entries(data).map(([key, value]) => ({ key, value })),
+  });
+  it("never lets a record older than the Fleet API read underneath overwrite it", () => {
+    const clock = emptyClock();
+    const base = read(2);
+    const late = applyTelemetry(
+      base,
+      record(180, { BatteryLevel: { doubleValue: 70 } }),
+      id,
+      false,
+      Date.now(),
+      clock,
+    );
+    expect(late).toBe(base);
+    const newer = applyTelemetry(
+      base,
+      record(60, { BatteryLevel: { doubleValue: 49 } }),
+      id,
+      false,
+      Date.now(),
+      clock,
+    );
+    expect(newer.battery.percentage).toBe(49);
+    expect(newer.data.sections.battery.observed_at).toBe(
+      clock.signals.BatteryLevel,
+    );
+  });
+  it("orders each signal on its own and never moves a section back in time", () => {
+    const clock = emptyClock();
+    const first = applyTelemetry(
+      read(10),
+      record(30, { BatteryLevel: { doubleValue: 40 } }),
+      id,
+      false,
+      Date.now(),
+      clock,
+    );
+    // Older than the battery level, but the first range reading since the read.
+    const range = record(90, {
+      BatteryLevel: { doubleValue: 45 },
+      RatedRange: { doubleValue: 120 },
+    });
+    const second = applyTelemetry(first, range, id, false, Date.now(), clock);
+    expect(second.battery.percentage).toBe(40);
+    expect(second.battery.range_km).toBeCloseTo(120 * 1.609344);
+    expect(second.data.sections.battery.observed_at).toBe(
+      first.data.sections.battery.observed_at,
+    );
+    // The same record again changes nothing.
+    expect(applyTelemetry(second, range, id, false, Date.now(), clock)).toBe(
+      second,
+    );
+  });
+});
+
+describe("telemetry ordering of shared and undated values", () => {
+  const payload = (
+    createdAt: string | undefined,
+    data: Record<string, Record<string, unknown>>,
+  ) => ({
+    vin,
+    ...(createdAt ? { createdAt } : {}),
+    data: Object.entries(data).map(([key, value]) => ({ key, value })),
+  });
+  const apply = (
+    current: ReturnType<typeof applyTelemetry> | null,
+    record: ReturnType<typeof payload>,
+    clock: ReturnType<typeof emptyClock>,
+  ) => applyTelemetry(current, record, id, false, Date.now(), clock);
+  it("orders rated and estimated range as one stored value", () => {
+    const clock = emptyClock();
+    const rated = apply(
+      null,
+      payload(at(-30000), { RatedRange: { doubleValue: 200 } }),
+      clock,
+    );
+    expect(rated.battery.range_km).toBeCloseTo(321.9, 1);
+    const older = apply(
+      rated,
+      payload(at(-90000), { EstBatteryRange: { doubleValue: 60 } }),
+      clock,
+    );
+    expect(older).toBe(rated);
+    expect(older.battery.range_km).toBeCloseTo(321.9, 1);
+    expect(older.data.sections.battery.observed_at).toBe(
+      rated.data.sections.battery.observed_at,
+    );
+    // Estimated range still works on its own, and when it is newer.
+    expect(
+      apply(
+        null,
+        payload(at(), { EstBatteryRange: { doubleValue: 60 } }),
+        emptyClock(),
+      ).battery.range_km,
+    ).toBeCloseTo(96.6, 1);
+    expect(
+      apply(
+        rated,
+        payload(at(-10000), { EstBatteryRange: { doubleValue: 150 } }),
+        clock,
+      ).battery.range_km,
+    ).toBeCloseTo(241.4, 1);
+  });
+  it("applies AC and DC charging power from the same record", () => {
+    const result = apply(
+      null,
+      payload(at(), {
+        ACChargingPower: { doubleValue: 0 },
+        DCChargingPower: { doubleValue: 150 },
+      }),
+      emptyClock(),
+    );
+    expect(result.charging.power_kw).toBe(150);
+  });
+  it("never lets a retried undated record replace a timestamped reading", () => {
+    const clock = emptyClock();
+    const undated = payload(undefined, { BatteryLevel: { doubleValue: 30 } });
+    const first = apply(null, undated, clock);
+    expect(first.battery.percentage).toBe(30);
+    // No source time: the value is kept but does not count as fresh.
+    expect(first.data.sections.battery.observed_at).toBeNull();
+    const createdAt = at(-5000);
+    const dated = apply(
+      first,
+      payload(createdAt, { BatteryLevel: { doubleValue: 70 } }),
+      clock,
+    );
+    expect(dated.battery.percentage).toBe(70);
+    const observed = dated.data.sections.battery.observed_at;
+    expect(observed).toBe(createdAt);
+    const retried = apply(dated, undated, clock);
+    expect(retried).toBe(dated);
+    expect(retried.battery.percentage).toBe(70);
+    expect(retried.data.sections.battery.observed_at).toBe(observed);
+  });
+});
+
 describe("telemetry routes", () => {
   it("configures the selected car through the telemetry Worker", async () => {
     await store.putMany({ selected: { id, vin }, owner_tokens: tokens() });
@@ -250,6 +412,7 @@ describe("telemetry routes", () => {
     expect(await ingested.json()).toEqual({
       received: 3,
       applied: 1,
+      ignored: 0,
       unknown_vehicles: 1,
       failed_accounts: 0,
     });

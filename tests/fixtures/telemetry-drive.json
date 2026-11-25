@@ -1,0 +1,344 @@
+{
+  "description": "A synthetic drive replayed through the relay-to-Worker ingest path. Times are seconds relative to the start of the replay; \"at\": null sends a record without createdAt. Field values use fleet-telemetry's typed JSON; plain numbers are shorthand for doubleValue and booleans for booleanValue.",
+  "accounts": {
+    "owner": {
+      "account": "",
+      "vin": "5YJ3E1EA7KF000001",
+      "vehicle_id": "5f0c1a2b3c4d5e6f708192a3",
+      "notify_url": "https://ntfy.example.invalid/owner"
+    },
+    "driver": {
+      "account": "7d1e2f3a4b5c6d7e8f901a2b",
+      "vin": "5YJ3E1EA7KF000002",
+      "vehicle_id": "6a1b2c3d4e5f60718293a4b5",
+      "notify_url": "https://ntfy.example.invalid/driver"
+    }
+  },
+  "steps": [
+    {
+      "name": "Drive starts: car connects and sends a full snapshot",
+      "batch": [
+        {
+          "car": "owner",
+          "topic": "connectivity",
+          "at": -240,
+          "status": "CONNECTED"
+        },
+        {
+          "car": "owner",
+          "topic": "V",
+          "at": -240,
+          "data": {
+            "BatteryLevel": 62,
+            "RatedRange": 190,
+            "DetailedChargeState": {
+              "detailedChargeStateValue": "DetailedChargeStateDisconnected"
+            },
+            "ChargeLimitSoc": 80,
+            "Locked": true,
+            "InsideTemp": 17,
+            "OutsideTemp": 6,
+            "Odometer": 11180
+          }
+        }
+      ],
+      "expect": {
+        "applied": 1,
+        "ignored": 0,
+        "owner.battery.percentage": 62
+      }
+    },
+    {
+      "name": "Driving",
+      "batch": [
+        {
+          "car": "owner",
+          "topic": "V",
+          "at": -180,
+          "data": {
+            "BatteryLevel": 57,
+            "RatedRange": 172,
+            "InsideTemp": 20
+          }
+        }
+      ],
+      "expect": {
+        "applied": 1,
+        "owner.battery.percentage": 57
+      }
+    },
+    {
+      "id": "arrival",
+      "name": "Arriving",
+      "batch": [
+        {
+          "car": "owner",
+          "topic": "V",
+          "at": -120,
+          "data": {
+            "BatteryLevel": 48,
+            "RatedRange": 146,
+            "OutsideTemp": 5,
+            "Odometer": 11214
+          }
+        }
+      ],
+      "expect": {
+        "applied": 1,
+        "owner.battery.percentage": 48
+      }
+    },
+    {
+      "name": "Late reading: an older record the car buffered arrives after newer ones",
+      "batch": [
+        {
+          "car": "owner",
+          "topic": "V",
+          "at": -210,
+          "data": {
+            "BatteryLevel": 60,
+            "RatedRange": 181
+          }
+        }
+      ],
+      "expect": {
+        "applied": 0,
+        "ignored": 1,
+        "owner.battery.percentage": 48,
+        "owner.data.sections.battery.observed_at": {
+          "at": -120
+        }
+      }
+    },
+    {
+      "name": "Older estimated range: a fallback signal for the same stored value",
+      "batch": [
+        {
+          "car": "owner",
+          "topic": "V",
+          "at": -150,
+          "data": {
+            "EstBatteryRange": 60
+          }
+        }
+      ],
+      "expect": {
+        "applied": 0,
+        "ignored": 1,
+        "owner.battery.range_km": 235.0,
+        "owner.data.sections.battery.observed_at": {
+          "at": -120
+        }
+      }
+    },
+    {
+      "name": "Evening alert run, right after the late record",
+      "cron": true,
+      "expect": {
+        "reminders.owner": 1,
+        "reminders.driver": 0,
+        "tesla_requests": 0
+      }
+    },
+    {
+      "name": "Repeated batch: the relay retries a batch the Worker already applied",
+      "repeat": "arrival",
+      "expect": {
+        "applied": 0,
+        "ignored": 1,
+        "owner.battery.percentage": 48
+      }
+    },
+    {
+      "id": "driver-undated",
+      "name": "Undated record: the other car sends a reading without createdAt",
+      "batch": [
+        {
+          "car": "driver",
+          "topic": "V",
+          "at": null,
+          "data": {
+            "BatteryLevel": 30
+          }
+        }
+      ],
+      "expect": {
+        "applied": 1,
+        "driver.battery.percentage": 30,
+        "driver.data.sections.battery.observed_at": null
+      }
+    },
+    {
+      "name": "Another account's car reports while charging",
+      "batch": [
+        {
+          "car": "driver",
+          "topic": "connectivity",
+          "at": -100,
+          "status": "CONNECTED"
+        },
+        {
+          "car": "driver",
+          "topic": "V",
+          "at": -100,
+          "data": {
+            "BatteryLevel": 41,
+            "RatedRange": 128,
+            "DetailedChargeState": {
+              "detailedChargeStateValue": "DetailedChargeStateCharging"
+            },
+            "ChargeLimitSoc": 90,
+            "Locked": true,
+            "InsideTemp": 15,
+            "OutsideTemp": 4,
+            "Odometer": 30410
+          }
+        }
+      ],
+      "expect": {
+        "applied": 1,
+        "owner.battery.percentage": 48,
+        "driver.battery.percentage": 41
+      },
+      "id": "driver-snapshot"
+    },
+    {
+      "name": "Undated record retried after a timestamped reading",
+      "repeat": "driver-undated",
+      "expect": {
+        "applied": 0,
+        "ignored": 1,
+        "driver.battery.percentage": 41,
+        "driver.data.sections.battery.observed_at": {
+          "at": -100
+        }
+      }
+    },
+    {
+      "name": "Relay restart: records still queued in the relay are lost",
+      "lost": [
+        {
+          "car": "owner",
+          "topic": "V",
+          "at": -90,
+          "data": {
+            "BatteryLevel": 47,
+            "RatedRange": 143
+          }
+        }
+      ],
+      "expect": {
+        "owner.battery.percentage": 48
+      }
+    },
+    {
+      "id": "reconnect",
+      "name": "Car reconnects to the restarted server and parks",
+      "batch": [
+        {
+          "car": "owner",
+          "topic": "connectivity",
+          "at": -75,
+          "status": "CONNECTED"
+        },
+        {
+          "car": "owner",
+          "topic": "V",
+          "at": -60,
+          "data": {
+            "BatteryLevel": 46,
+            "RatedRange": 140,
+            "DetailedChargeState": {
+              "detailedChargeStateValue": "DetailedChargeStateDisconnected"
+            },
+            "Locked": true,
+            "InsideTemp": 16
+          }
+        }
+      ],
+      "expect": {
+        "applied": 1,
+        "owner.battery.percentage": 46,
+        "owner.vehicle.online": true
+      }
+    },
+    {
+      "name": "Car goes to sleep",
+      "batch": [
+        {
+          "car": "owner",
+          "topic": "connectivity",
+          "at": -30,
+          "status": "DISCONNECTED"
+        }
+      ],
+      "expect": {
+        "owner.vehicle.online": false,
+        "telemetry.owner.connected": false
+      }
+    },
+    {
+      "name": "Late record from before the disconnect",
+      "batch": [
+        {
+          "car": "owner",
+          "topic": "V",
+          "at": -45,
+          "data": {
+            "SentryMode": {
+              "sentryModeStateValue": "SentryModeStateOff"
+            }
+          }
+        }
+      ],
+      "expect": {
+        "applied": 1,
+        "owner.vehicle.sentry_mode": false,
+        "owner.vehicle.online": false
+      }
+    },
+    {
+      "name": "Repeated batch after the restart, including an old CONNECTED",
+      "repeat": "reconnect",
+      "expect": {
+        "applied": 0,
+        "ignored": 1,
+        "owner.vehicle.online": false,
+        "telemetry.owner.connected": false
+      }
+    },
+    {
+      "name": "Next alert run",
+      "cron": true,
+      "expect": {
+        "reminders.owner": 1,
+        "reminders.driver": 0,
+        "tesla_requests": 0
+      }
+    }
+  ],
+  "expect": {
+    "owner.battery.percentage": 46,
+    "owner.battery.range_km": 225.3,
+    "owner.charging.connected": false,
+    "owner.vehicle.locked": true,
+    "owner.vehicle.online": false,
+    "owner.vehicle.sentry_mode": false,
+    "owner.vehicle.odometer_km": 18047.2,
+    "owner.data.sections.battery.observed_at": {
+      "at": -60
+    },
+    "owner.data.source": "tesla_fleet_telemetry",
+    "telemetry.owner.connected": false,
+    "driver.battery.percentage": 41,
+    "driver.charging.charging": true,
+    "driver.vehicle.online": true,
+    "telemetry.driver.connected": true,
+    "reminders.owner": 1,
+    "reminders.driver": 0,
+    "tesla_requests": 0,
+    "driver.data.sections.battery.observed_at": {
+      "at": -100
+    }
+  }
+}

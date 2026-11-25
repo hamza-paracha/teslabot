@@ -94,7 +94,14 @@ export class Store {
     if (this.ctx) this.ctx.waitUntil(write);
     else await write;
   }
-  async locked<T>(name: string, fn: () => Promise<T>, waitMs = 0): Promise<T> {
+  // While waiting, `settled` may return a result the current holder already
+  // produced (for example a refreshed cache entry), ending the wait lock-free.
+  async locked<T>(
+    name: string,
+    fn: () => Promise<T>,
+    waitMs = 0,
+    settled?: () => Promise<T | null>,
+  ): Promise<T> {
     const owner = random();
     const deadline = Date.now() + waitMs;
     for (let delay = 100; ; delay = Math.min(delay * 2, 1000)) {
@@ -108,6 +115,8 @@ export class Store {
       if (now + delay > deadline)
         throw new AppError("operation_in_progress", 409);
       await sleep(delay);
+      const result = settled && (await settled());
+      if (result) return result;
     }
     try {
       return await fn();

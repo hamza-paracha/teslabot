@@ -56,6 +56,73 @@ describe("concurrent reads", () => {
       ),
     ).toHaveLength(1);
   });
+  it("returns waiting cold reads as soon as the shared refresh lands", async () => {
+    await store.putMany({ selected: { id, vin }, owner_tokens: tokens() });
+    const upstream = vi.fn(async (input: RequestInfo | URL) => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      if (String(input).includes("/vehicle_data"))
+        return Response.json({
+          response: {
+            ...fixture,
+            charge_state: { ...fixture.charge_state, timestamp: Date.now() },
+          },
+        });
+      return Response.json({
+        response: { vin, state: "online", display_name: "Car" },
+      });
+    });
+    vi.stubGlobal("fetch", upstream);
+    const started = performance.now();
+    const finished = await Promise.all(
+      Array.from({ length: 10 }, async (_, i) => {
+        const r = await req("/api/vehicle/" + sections[i % sections.length]);
+        expect(r.status).toBe(200);
+        return performance.now() - started;
+      }),
+    );
+    expect(upstream).toHaveBeenCalledTimes(2);
+    // Waiters re-check the cache while polling instead of queueing for the
+    // lock one by one after the refresh has already been stored.
+    expect(Math.max(...finished)).toBeLessThan(1500);
+  });
+  it("shares one failed refresh between parallel reads of a sleeping car", async () => {
+    const old = Date.now() - 3600000;
+    const cached = normalize(
+      { ...fixture, charge_state: { ...fixture.charge_state, timestamp: old } },
+      id,
+      "Car",
+      false,
+    );
+    cached.data.retrieved_at = new Date(old).toISOString();
+    await store.putMany({
+      selected: { id, vin },
+      owner_tokens: tokens(),
+      summary: cached,
+    });
+    const upstream = vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return Response.json({
+        response: { vin, state: "asleep", display_name: "Car" },
+      });
+    });
+    vi.stubGlobal("fetch", upstream);
+    const bodies = await Promise.all(
+      Array.from({ length: 10 }, async (_, i) => {
+        const r = await req("/api/vehicle/" + sections[i % sections.length]);
+        expect(r.status).toBe(200);
+        return (await r.json()) as any;
+      }),
+    );
+    expect(upstream).toHaveBeenCalledTimes(1);
+    for (const body of bodies)
+      expect(body.data).toMatchObject({
+        is_stale: true,
+        refresh_error: "vehicle_asleep",
+      });
+    // A read that starts after the failed attempt checks the car again.
+    await req("/api/vehicle/battery");
+    expect(upstream).toHaveBeenCalledTimes(2);
+  });
   it("reserves usage atomically so parallel requests cannot exceed the daily limit", async () => {
     await store.put("owner_tokens", tokens());
     const limit = e.MAX_REQUESTS_PER_DAY;

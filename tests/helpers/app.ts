@@ -1,11 +1,11 @@
 import { beforeAll, beforeEach, afterAll, afterEach, vi } from "vitest";
-import { Miniflare, convertV4MiniflareOptions } from "miniflare";
-import { readFileSync, readdirSync } from "node:fs";
+import type { Miniflare } from "miniflare";
 import { generateKeyPairSync } from "node:crypto";
 import app from "../../src/index";
 import { Store } from "../../src/storage/database";
 import type { Env } from "../../src/types";
 import { KEY_PATH } from "../../src/tesla/partner";
+import { openDatabase } from "../../scripts/lib/harness";
 
 export const testPublicKey = generateKeyPairSync("ec", {
   namedCurve: "prime256v1",
@@ -46,24 +46,10 @@ export function req(path: string, init: RequestInit = {}, auth = true) {
   );
 }
 beforeAll(async () => {
-  mf = new Miniflare(
-    convertV4MiniflareOptions({
-      name: "test",
-      modules: true,
-      script: 'export default {fetch(){return new Response("ok")}}',
-      compatibilityDate: "2026-10-18",
-      d1Databases: ["DB"],
-    }),
-  );
-  const DB = await mf.getD1Database("DB");
-  for (const migration of readdirSync("migrations")
-    .filter((file) => file.endsWith(".sql"))
-    .sort())
-    await DB.exec(
-      readFileSync("migrations/" + migration, "utf8").replace(/\n/g, " "),
-    );
+  const opened = await openDatabase();
+  mf = opened.mf;
   e = {
-    DB: DB as unknown as D1Database,
+    DB: opened.DB,
     ASSETS: {
       fetch: async (r: Request) => {
         const p = new URL(r.url).pathname;

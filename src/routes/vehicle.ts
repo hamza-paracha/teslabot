@@ -27,6 +27,13 @@ import {
   type Preferences,
 } from "../context/observations";
 
+interface RefreshFailure {
+  vehicle_id: string;
+  at: string;
+  code: string;
+  status: number;
+}
+
 // Serve a fresh cached observation, or refresh it from Tesla under the vehicle lock.
 // Never wakes the car; an asleep or offline car falls back to the last reading.
 export async function currentSummary(
@@ -55,11 +62,49 @@ export async function currentSummary(
       already_awake: null,
     },
   });
+  const fallback = (cached: Observation, code: string) =>
+    ({
+      ...cached,
+      data: {
+        ...cached.data,
+        is_stale: true,
+        cache_hit: true,
+        may_incur_api_charges: true,
+        refresh_error: code,
+        already_awake: null,
+      },
+    }) as Observation;
+  // A refresh that failed after this read began (the car is asleep, say) also
+  // answers this read, so parallel reads share one Tesla attempt. Reads that
+  // start later check the car again.
+  const started = Date.now();
+  const sharedFailure = (stored: Record<string, any>) => {
+    const failure: RefreshFailure | null = stored.refresh_failure;
+    if (
+      !failure ||
+      failure.vehicle_id !== stored.selected?.id ||
+      Date.parse(failure.at) < started
+    )
+      return null;
+    if (stored.summary?.vehicle.id !== failure.vehicle_id)
+      throw new AppError(failure.code, failure.status);
+    return fallback(stored.summary, failure.code);
+  };
   // Fast path: a fresh cached reading is served from one read, without the lock,
-  // so parallel tool calls do not collide.
-  const peek = await store.getMany(["selected", "summary"]);
-  return usable(peek.summary, peek.selected)
-    ? hit(peek.summary)
+  // so parallel tool calls do not collide. Waiters re-check it while polling.
+  const cachedHit = async () => {
+    const peek = await store.getMany([
+      "selected",
+      "summary",
+      "refresh_failure",
+    ]);
+    return usable(peek.summary, peek.selected)
+      ? hit(peek.summary)
+      : sharedFailure(peek);
+  };
+  const early = await cachedHit();
+  return early
+    ? early
     : await store.locked(
         "vehicle",
         async () => {
@@ -68,13 +113,16 @@ export async function currentSummary(
             "summary",
             "preferences",
             "observation_history",
+            "refresh_failure",
           ]);
           const selected: { id: string; vin: string } | null = stored.selected;
           if (!selected) return selectionRequired(store);
           const cached: Observation | null =
             stored.summary?.vehicle.id === selected.id ? stored.summary : null;
-          // Another request may have refreshed while this one waited.
+          // Another request may have refreshed, or failed to, while this one waited.
           if (cached && usable(cached, selected)) return hit(cached);
+          const shared = sharedFailure(stored);
+          if (shared) return shared;
           try {
             const v = await client.vehicle(selected.vin);
             if (v.state !== "online")
@@ -117,9 +165,8 @@ export async function currentSummary(
             return result;
           } catch (error) {
             if (
-              cached &&
-              error instanceof AppError &&
-              ![
+              !(error instanceof AppError) ||
+              [
                 "reauthorization_required",
                 "permission_denied",
                 "missing_vehicle_data_scope",
@@ -128,21 +175,19 @@ export async function currentSummary(
                 "vehicle_not_authorized",
               ].includes(error.code)
             )
-              return {
-                ...cached,
-                data: {
-                  ...cached.data,
-                  is_stale: true,
-                  cache_hit: true,
-                  may_incur_api_charges: true,
-                  refresh_error: error.code,
-                  already_awake: null,
-                },
-              };
+              throw error;
+            await store.put("refresh_failure", {
+              vehicle_id: selected.id,
+              at: new Date().toISOString(),
+              code: error.code,
+              status: error.status,
+            } satisfies RefreshFailure);
+            if (cached) return fallback(cached, error.code);
             throw error;
           }
         },
         30000,
+        cachedHit,
       );
 }
 
@@ -315,6 +360,7 @@ export async function vehicleRoute(
           "summary",
           "previous_summary",
           "observation_history",
+          "refresh_failure",
         ]),
       ]);
     });

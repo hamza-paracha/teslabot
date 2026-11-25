@@ -12,6 +12,9 @@ Main Worker --service binding--> telemetry Worker /configure --> relay --> Tesla
 
 - TLS, including the car's client certificate, terminates inside the container in Tesla's own `fleet-telemetry` server. Cloudflare passes the bytes through without inspecting them.
 - The relay forwards decoded records, in batches, to the main Worker. The main Worker maps each VIN to the account that turned telemetry on and updates that account's cached reading. Records for unknown cars are dropped.
+- Records can arrive late, out of order or twice: the car buffers readings while it has no connection, and the relay retries a batch when it gets no response, even if the Worker already applied it. The main Worker remembers the source time (`createdAt`) of every stored value it has applied, and of the Fleet API read underneath, and keeps only newer values. A late or repeated record therefore cannot replace a newer reading or move its timestamp back. Signals that write the same value share one clock: rated and estimated range both set the range, and AC and DC power both set charging power. A connectivity event older than the latest one is ignored, and a record from before the latest disconnect does not mark the car online.
+- Records without a usable `createdAt` (missing, or more than a minute in the future) cannot be ordered, and arrival time is not used in place of it because a retry would then look new. Such a record only fills a value nothing has set yet. It never replaces a known value, and it does not make its section count as fresh. A repeated undated record is ignored. The car normally sends `createdAt` on every record.
+- Delivery is not guaranteed. The relay keeps queued records in memory, drops the oldest when 5,000 are queued, and `fleet-telemetry` runs with `reliable_ack` off, so records queued when the container restarts are lost. Lost values stay at their last reading, with its timestamp, until the car sends them again; a stale section still falls back to a normal Fleet API read.
 - Vehicle configurations must be signed with the partner application's private key. Tesla's `tesla-http-proxy` does this inside the container. The relay exposes exactly one call, `fleet_telemetry_config` create, and only to the Durable Object with `RELAY_TOKEN`.
 
 Code: `telemetry/src/index.ts` (Worker and Durable Object), `telemetry/container/` (Dockerfile and `relay.py`), `src/routes/telemetry.ts` and `src/telemetry/mapping.ts` (main Worker).
@@ -83,6 +86,7 @@ The main Worker's `/configure` calls then need a route to port 8080 that only th
 
 ## Testing
 
-- `npm test` covers the field mapping, ingest, enable/disable and the telemetry Worker's authentication.
+- `npm test` covers the field mapping, ingest ordering, enable/disable and the telemetry Worker's authentication.
+- `npm run telemetry:replay` replays a synthetic drive ([fixture](../tests/fixtures/telemetry-drive.json)) through `/telemetry/ingest` and the cron alert runner for two accounts. It includes a late record, an older estimated range after a rated one, repeated batches, an undated record retried after a timestamped one, a relay restart that loses a queued record, and a record from before a disconnect. It then checks each step and the final reading, connectivity, reminder count and Tesla request count against the fixture's expectations. It runs locally with no network access, and `npm test` runs it too.
 - `python3 -m unittest telemetry/container/test_relay.py` needs `pyzmq` and `openssl`. It covers ZMQ-to-ingest forwarding, retries and the pinned-TLS proxy call.
 - The container image itself is built only at deploy time, with Docker.
