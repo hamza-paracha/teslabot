@@ -60,6 +60,24 @@ describe("lock leases", () => {
     expect(await first.get("summary")).toBe("written by the next holder");
   });
 
+  it("guards writes inside a nested lock by the inner lease", async () => {
+    const first = new Store(e),
+      next = new Store(e);
+    await first.locked("vehicle", async () => {
+      await expire("vehicle");
+      await next.locked("vehicle", async () => {});
+      // A token refresh inside the account lock must still be saved.
+      await first.locked("account", () =>
+        first.put("owner_tokens", "rotated token"),
+      );
+      await expect(
+        first.put("summary", "stale write from the expired holder"),
+      ).rejects.toMatchObject({ code: "lease_lost" });
+    });
+    expect(await first.get("owner_tokens")).toBe("rotated token");
+    expect(await first.get("summary")).toBeNull();
+  });
+
   it("still writes when the lease expired but nobody took it over", async () => {
     const first = new Store(e);
     await first.locked("vehicle", async () => {

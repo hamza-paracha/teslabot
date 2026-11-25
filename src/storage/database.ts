@@ -10,9 +10,10 @@ export const accountPrefix = (account: string) =>
   account ? `acct:${account}:` : "";
 export class Store {
   readonly prefix: string;
-  // Leases this Store currently holds, owner -> full lock name. Writes check
-  // that every one is still held (see putMany).
-  private leases = new Map<string, string>();
+  // Leases this Store holds, innermost last. Writes check that the innermost
+  // one is still held (see putMany): a nested lock such as "account" inside
+  // "vehicle" guards the writes made inside it.
+  private leases: { name: string; owner: string }[] = [];
   constructor(
     public env: Env,
     public ctx?: Pick<ExecutionContext, "waitUntil">,
@@ -68,13 +69,12 @@ export class Store {
       ),
     );
     if (!statements.length && !extraStatements.length) return;
-    const fence = [...this.leases].map(([owner, name]) =>
-      this.leaseCheck(name, owner),
-    );
+    const lease = this.leases.at(-1);
+    const fence = lease ? [this.leaseCheck(lease)] : [];
     try {
       await this.env.DB.batch([...fence, ...statements, ...extraStatements]);
     } catch (error) {
-      if (fence.length && (await this.lostLease()))
+      if (lease && !(await this.holds(lease)))
         throw new AppError("lease_lost", 409);
       throw error;
     }
@@ -83,21 +83,17 @@ export class Store {
   // lock. This statement fails (json() rejects the text) once the lock row no
   // longer names this owner, and D1 rolls back the whole batch, so a holder
   // that lost its lease cannot overwrite the next holder's writes.
-  private leaseCheck(name: string, owner: string) {
+  private leaseCheck({ name, owner }: { name: string; owner: string }) {
     return this.env.DB.prepare(
       "SELECT CASE WHEN EXISTS(SELECT 1 FROM locks WHERE name=? AND owner=?) THEN 1 ELSE json('lease_lost') END",
     ).bind(name, owner);
   }
-  private async lostLease() {
-    for (const [owner, name] of this.leases) {
-      const row = await this.env.DB.prepare(
-        "SELECT 1 FROM locks WHERE name=? AND owner=?",
-      )
-        .bind(name, owner)
-        .first();
-      if (!row) return true;
-    }
-    return false;
+  private async holds({ name, owner }: { name: string; owner: string }) {
+    return !!(await this.env.DB.prepare(
+      "SELECT 1 FROM locks WHERE name=? AND owner=?",
+    )
+      .bind(name, owner)
+      .first());
   }
   async delete(key: string) {
     await this.putMany({}, [this.deleteKeys([key])]);
@@ -150,11 +146,11 @@ export class Store {
       const result = settled && (await settled());
       if (result) return result;
     }
-    this.leases.set(owner, this.key(name));
+    this.leases.push({ name: this.key(name), owner });
     try {
       return await fn();
     } finally {
-      this.leases.delete(owner);
+      this.leases = this.leases.filter((lease) => lease.owner !== owner);
       await this.env.DB.prepare("DELETE FROM locks WHERE name=? AND owner=?")
         .bind(this.key(name), owner)
         .run();
