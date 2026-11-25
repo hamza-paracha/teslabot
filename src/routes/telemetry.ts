@@ -16,6 +16,7 @@ import {
   applyTelemetry,
   emptyClock,
   recordTime,
+  telemetryOnline,
   type SignalClock,
   LOCATION_FIELDS,
   TELEMETRY_FIELDS,
@@ -348,22 +349,23 @@ async function ingest(
               else applied++;
               summary = next;
             } else if (kind === "connectivity") {
-              // An undated event cannot be ordered; it only sets a first state.
               const dated = recordTime(record.payload);
+              const last = clock.connectivity;
               if (
-                clock.connectivity &&
-                (!dated ||
-                  Date.parse(dated) <= Date.parse(clock.connectivity.at))
+                last &&
+                (dated === null || (last.at !== null && dated <= last.at))
               )
                 continue;
-              const at = dated ?? new Date().toISOString();
               state.connected = record.payload.status === "CONNECTED";
-              clock.connectivity = { at, connected: state.connected };
+              clock.connectivity = { at: dated, connected: state.connected };
               connectivityChanged = true;
-              if (summary && !state.connected)
+              if (summary)
                 summary = {
                   ...summary,
-                  vehicle: { ...summary.vehicle, online: false },
+                  vehicle: {
+                    ...summary.vehicle,
+                    online: telemetryOnline(clock, summary),
+                  },
                 };
             }
           }

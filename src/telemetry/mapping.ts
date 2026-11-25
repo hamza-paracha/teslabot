@@ -104,12 +104,10 @@ export function recordTime(payload: { createdAt?: unknown }, now = Date.now()) {
 }
 
 // Signals that write the same stored value share one clock, so an older
-// fallback (estimated range, DC power) cannot replace a newer primary value.
+// fallback (estimated range) cannot replace a newer primary value.
 const STORED_AS: Record<string, string> = {
   RatedRange: "range_km",
   EstBatteryRange: "range_km",
-  ACChargingPower: "power_kw",
-  DCChargingPower: "power_kw",
 };
 
 // What the stored observation already reflects, so records that arrive late or
@@ -119,13 +117,31 @@ const STORED_AS: Record<string, string> = {
 export interface SignalClock {
   signals: Record<string, string | null>;
   baseline: Record<string, string | null>;
-  connectivity: { at: string; connected: boolean } | null;
+  connectivity: { at: string | null; connected: boolean } | null;
+  power?: { ac?: number; dc?: number };
 }
 export const emptyClock = (): SignalClock => ({
   signals: {},
   baseline: {},
   connectivity: null,
 });
+
+export function telemetryOnline(
+  clock: SignalClock,
+  current?: Observation,
+): boolean {
+  const event = clock.connectivity;
+  if (!event || event.connected) return true;
+  const times =
+    current?.data.source === "tesla_fleet_api"
+      ? Object.values(current.data.sections ?? {}).map(
+          (section) => section.observed_at,
+        )
+      : [...Object.values(clock.signals), ...Object.values(clock.baseline)];
+  return times.some(
+    (at) => at !== null && (event.at === null || at > event.at),
+  );
+}
 
 // Patch the stored observation with one telemetry record. A value is applied
 // only if the record is newer than the one that last set that value (and than
@@ -149,6 +165,7 @@ export function applyTelemetry(
     // A new car, or a fresh Fleet API read since the last record: values now
     // date from that read.
     clock.signals = {};
+    delete clock.power;
     clock.baseline = same
       ? Object.fromEntries(
           Object.entries(current.data.sections ?? {}).map(([name, section]) => [
@@ -170,17 +187,22 @@ export function applyTelemetry(
   );
   const time = dated === null ? null : Date.parse(dated);
   const touched = new Set<string>();
-  // Compare against the clock as it was before this record, so two signals in
-  // one record that write the same value (AC and DC power) both still apply.
   const before = { ...clock.signals };
+  const hadPower = ["ACChargingPower", "DCChargingPower", "power_kw"].some(
+    (signal) => signal in before,
+  );
+  let powerUpdated = false;
   let key = "";
   const set = (section: string, apply: () => void) => {
-    const last = [before[key], clock.baseline[section]].filter(
+    const isPower = key === "ACChargingPower" || key === "DCChargingPower";
+    // Older snapshots only kept a shared power timestamp.
+    const priorKey = isPower && !(key in before) ? "power_kw" : key;
+    const last = [before[priorKey], clock.baseline[section]].filter(
       (value): value is string => !!value,
     );
     if (
       time === null
-        ? key in before || last.length
+        ? priorKey in before || last.length || (isPower && hadPower)
         : last.some((value) => Date.parse(value) >= time)
     )
       return;
@@ -231,13 +253,13 @@ export function applyTelemetry(
       case "ACChargingPower":
       case "DCChargingPower": {
         const kw = num(v);
-        if (
-          kw !== null &&
-          (kw > 0 ||
-            base.charging.power_kw === null ||
-            datum.key === "ACChargingPower")
-        )
-          set("charging", () => (base.charging.power_kw = Math.max(0, kw)));
+        if (kw !== null) {
+          const source = datum.key === "ACChargingPower" ? "ac" : "dc";
+          set("charging", () => {
+            (clock.power ??= {})[source] = Math.max(0, kw);
+            powerUpdated = true;
+          });
+        }
         break;
       }
       case "TimeToFullCharge":
@@ -362,11 +384,21 @@ export function applyTelemetry(
       }
     }
   }
+  if (powerUpdated) {
+    const acDated = clock.signals.ACChargingPower != null;
+    const dcDated = clock.signals.DCChargingPower != null;
+    const ac = dcDated && !acDated ? undefined : clock.power!.ac;
+    const dc = acDated && !dcDated ? undefined : clock.power!.dc;
+    base.charging.power_kw =
+      dc !== undefined && dc > 0 ? dc : (ac ?? dc ?? null);
+  }
   const sections = { ...base.data.sections } as Record<
     string,
     ReturnType<typeof freshness>
   >;
-  if (!touched.size) return same ? current : base;
+  if (!touched.size && same) return current;
+  base.vehicle.online = telemetryOnline(clock);
+  if (!touched.size) return base;
   for (const section of touched)
     if (time !== null && (section !== "location" || location)) {
       const previous = Date.parse(sections[section]?.observed_at ?? "");
@@ -382,13 +414,6 @@ export function applyTelemetry(
     ? new Date(Math.min(...times.map((t) => Date.parse(t)))).toISOString()
     : null;
   const fresh = freshness(oldest, now);
-  // A record from before the latest disconnect does not mean the car is back.
-  if (
-    !clock.connectivity ||
-    clock.connectivity.connected ||
-    (time !== null && time > Date.parse(clock.connectivity.at))
-  )
-    base.vehicle.online = true;
   base.data = {
     ...base.data,
     sections: sections as Observation["data"]["sections"],

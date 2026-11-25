@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { hash } from "../../src/security/crypto";
 import { runScheduled } from "../../src/scheduled";
 import { createHarness } from "./harness";
@@ -27,6 +27,7 @@ interface FixtureStep {
   name: string;
   batch?: FixtureRecord[];
   repeat?: string;
+  loseResponse?: boolean;
   lost?: FixtureRecord[];
   cron?: boolean;
   expect?: Record<string, unknown>;
@@ -42,7 +43,7 @@ export interface Fixture {
 }
 export interface StepResult {
   name: string;
-  kind: "batch" | "repeat" | "lost" | "cron";
+  kind: "batch" | "repeat" | "lost" | "lost response" | "cron";
   records: number;
   ingest?: Record<string, number>;
   failures: string[];
@@ -150,16 +151,27 @@ export async function replay(
             },
           };
     };
-    const ingest = async (records: FixtureRecord[]) => {
+    const ingest = async (
+      records: FixtureRecord[],
+      batchId: string,
+      loseResponse?: boolean,
+    ) => {
       const response = await h.request(
         "/telemetry/ingest",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": batchId,
+          },
           body: JSON.stringify({ records: records.map(relayRecord) }),
         },
         ingestToken,
       );
+      if (loseResponse) {
+        await response.body?.cancel();
+        return;
+      }
       if (!response.ok)
         throw Error(
           `ingest returned ${response.status}: ${await response.text()}`,
@@ -196,7 +208,7 @@ export async function replay(
     ) =>
       Object.entries(expected).flatMap(([path, want]) => {
         const actual =
-          ingested && (path === "applied" || path === "ignored")
+          ingested && Object.hasOwn(ingested, path)
             ? ingested[path]
             : get(state, path.split("."));
         const target =
@@ -216,6 +228,7 @@ export async function replay(
     const byId = new Map(
       fixture.steps.filter((s) => s.id).map((s) => [s.id!, s]),
     );
+    const batchIds = new Map([...byId.keys()].map((id) => [id, randomUUID()]));
     const steps: StepResult[] = [];
     for (const step of fixture.steps) {
       let kind: StepResult["kind"], records: FixtureRecord[], ingested;
@@ -229,12 +242,18 @@ export async function replay(
         kind = "lost";
         records = step.lost;
       } else {
-        kind = step.repeat ? "repeat" : "batch";
+        kind = step.loseResponse
+          ? "lost response"
+          : step.repeat
+            ? "repeat"
+            : "batch";
         records = step.repeat
           ? (byId.get(step.repeat)?.batch ?? [])
           : (step.batch ?? []);
         if (!records.length) throw Error(`Step "${step.name}" has no records`);
-        ingested = await ingest(records);
+        const batchId =
+          batchIds.get(step.repeat ?? step.id ?? "") ?? randomUUID();
+        ingested = await ingest(records, batchId, step.loseResponse);
       }
       const state = await snapshot();
       const result: StepResult = {

@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { randomUUID } from "node:crypto";
+import { syntheticTesla } from "../scripts/lib/harness";
 import { applyTelemetry, emptyClock } from "../src/telemetry/mapping";
 import { normalize } from "../src/tesla/normalization";
 import { hash } from "../src/security/crypto";
@@ -278,6 +280,59 @@ describe("telemetry ordering of shared and undated values", () => {
       emptyClock(),
     );
     expect(result.charging.power_kw).toBe(150);
+    expect(
+      apply(
+        null,
+        payload(at(), {
+          DCChargingPower: { doubleValue: 150 },
+          ACChargingPower: { doubleValue: 0 },
+        }),
+        emptyClock(),
+      ).charging.power_kw,
+    ).toBe(150);
+  });
+  it.each(["forward", "reverse"])(
+    "keeps AC power when an idle DC record arrives in %s order",
+    (order) => {
+      const clock = emptyClock();
+      const ac = payload(at(-30000), { ACChargingPower: { doubleValue: 7.4 } });
+      const idleDc = payload(at(-20000), {
+        DCChargingPower: { doubleValue: 0 },
+      });
+      const [first, second] = order === "forward" ? [ac, idleDc] : [idleDc, ac];
+      const result = apply(apply(null, first, clock), second, clock);
+      expect(result.charging.power_kw).toBe(7.4);
+      const activeDc = apply(
+        result,
+        payload(at(-10000), { DCChargingPower: { doubleValue: 100 } }),
+        clock,
+      );
+      expect(activeDc.charging.power_kw).toBe(100);
+      expect(
+        apply(
+          activeDc,
+          payload(at(), { DCChargingPower: { doubleValue: 0 } }),
+          clock,
+        ).charging.power_kw,
+      ).toBe(7.4);
+    },
+  );
+  it("uses undated charging power only until there is a dated reading", () => {
+    const undated = payload(undefined, {
+      DCChargingPower: { doubleValue: 150 },
+    });
+    const dated = payload(at(-5000), { ACChargingPower: { doubleValue: 7.4 } });
+
+    const undatedFirst = emptyClock();
+    const provisional = apply(null, undated, undatedFirst);
+    expect(provisional.charging.power_kw).toBe(150);
+    expect(provisional.data.sections.charging.observed_at).toBeNull();
+    expect(apply(provisional, dated, undatedFirst).charging.power_kw).toBe(7.4);
+
+    const datedFirst = emptyClock();
+    const known = apply(null, dated, datedFirst);
+    expect(apply(known, undated, datedFirst)).toBe(known);
+    expect(known.charging.power_kw).toBe(7.4);
   });
   it("never lets a retried undated record replace a timestamped reading", () => {
     const clock = emptyClock();
@@ -435,6 +490,80 @@ describe("telemetry routes", () => {
       ).status,
     ).toBe(403);
   });
+  it.each(["replay first", "disconnect first"])(
+    "keeps a fresh Fleet API reading online after a buffered disconnect (%s)",
+    async (order) => {
+      configure();
+      await store.putMany({
+        selected: { id, vin },
+        owner_tokens: tokens(),
+        telemetry_state: {
+          enabled_at: at(),
+          expires_at: at(86400000),
+          connected: null,
+          last_record_at: null,
+          rotated_at: null,
+        },
+      });
+      await e.DB.prepare(
+        "INSERT INTO telemetry_vehicles(vin_hash,account,vehicle_id,created) VALUES(?,?,?,?)",
+      )
+        .bind(await hash("vin:" + vin), "", id, Date.now())
+        .run();
+      const replayed = {
+        topic: "tesla_V",
+        payload: {
+          vin,
+          createdAt: at(-360000),
+          data: [{ key: "BatteryLevel", value: { doubleValue: 60 } }],
+        },
+      };
+      const disconnect = (createdAt: string) => ({
+        topic: "tesla_connectivity",
+        payload: { vin, createdAt, status: "DISCONNECTED" },
+      });
+      const deliver = async (record: unknown) => {
+        const request = json({ records: [record] }, ingestToken);
+        const response = await req(
+          "/telemetry/ingest",
+          {
+            ...request,
+            headers: { ...request.headers, "Idempotency-Key": randomUUID() },
+          },
+          false,
+        );
+        expect(response.status).toBe(200);
+        return response.json();
+      };
+      expect(await deliver(replayed)).toMatchObject({ applied: 1 });
+
+      const tesla = syntheticTesla();
+      const refreshedAt = Date.now() - 10000;
+      tesla.car.observed_at = () => refreshedAt;
+      vi.stubGlobal("fetch", tesla.fetch);
+      const refresh = await req("/api/vehicle/summary");
+      expect(refresh.status).toBe(200);
+      expect(await refresh.json()).toMatchObject({
+        battery: { percentage: 71 },
+        data: { source: "tesla_fleet_api" },
+      });
+      expect(tesla.count("vehicle_data")).toBe(1);
+
+      const buffered = disconnect(at(-400000));
+      if (order === "disconnect first") await deliver(buffered);
+      expect(await deliver(replayed)).toMatchObject({ applied: 0, ignored: 1 });
+      if (order === "replay first") await deliver(buffered);
+      expect(await store.get("summary")).toMatchObject({
+        battery: { percentage: 71 },
+        vehicle: { online: true },
+        data: { observed_at: new Date(refreshedAt).toISOString() },
+      });
+      await deliver(disconnect(at()));
+      expect(await store.get("summary")).toMatchObject({
+        vehicle: { online: false },
+      });
+    },
+  );
   it("acknowledges only committed writes and skips healthy accounts on retry", async () => {
     configure();
     const driver = store.forAccount("driver");
