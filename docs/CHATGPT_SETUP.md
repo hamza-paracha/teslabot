@@ -30,6 +30,6 @@ Use a restricted **Tunnels Read/Use** runtime key and store it in a secret manag
 
 Use the [official Secure MCP Tunnels guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) to download the vendor's tunnel-client release and verify its published SHA-256 checksum. Place the binary at `secrets/tunnel-client/tunnel-client`; do not commit it. Create the tunnel in the intended organization and ChatGPT workspace, create a restricted Read/Use runtime key, and save it using `python3 scripts/configure-tunnel-key.py` on macOS.
 
-Build the plugin and prepare the private `secrets/mcp.json` file as described in [MCP setup](MCP_SETUP.md). Run the connect helper. In ChatGPT, add a custom MCP server using that tunnel and connect it privately. Authentication is provided by the tunnel's OpenAI workspace access; the local stdio target has no separate OAuth server. Its backend requests still use the read-only MCP credential.
+Build the plugin and prepare the private `secrets/mcp.json` file as described in [MCP setup](MCP_SETUP.md). Run the connect helper. In ChatGPT, add a custom MCP server using that tunnel and connect it privately. Authentication is provided by the tunnel's OpenAI workspace access; the local stdio target has no separate OAuth server. Its backend requests still use the scoped MCP credential.
 
 Use the host's existing calendar, routing and weather tools. Proactive delivery requires separate opt-in, a real host scheduler and a chosen notification channel. See [proactive behavior](PROACTIVE_PLUGIN.md). No vehicle commands are enabled.

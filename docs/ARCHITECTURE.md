@@ -27,7 +27,7 @@
 Browser administrator -> Worker -> encrypted D1 records / Tesla Fleet API.
 Local MCP client -> local stdio server -> HTTPS Worker with a separate read-only bearer credential.
 Every request resolves to a principal (operator, driver, MCP reader or telemetry relay) and an account, and is served from that account's namespaced records.
-Remote MCP client -> Worker `/mcp` (Streamable HTTP) -> the same routes in-process with the read-only credential.
+Remote MCP client -> Worker `/mcp` (Streamable HTTP) -> the same routes in-process with [MCP scope](HTTP_API.md#credential-scopes).
 Cron trigger (every 10 minutes) -> alert runner -> cached or fresh observation -> notification destination.
 
 A static public shell contains no vehicle data. An administrator enters the random administrator credential through a password field; it becomes a one-hour opaque HttpOnly Secure SameSite=Strict session. The credential is not persisted in browser storage. Automation uses bearer headers. MCP_TOKEN cannot access authentication, administrative or mutating routes.

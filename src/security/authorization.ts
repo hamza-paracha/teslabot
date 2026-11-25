@@ -29,8 +29,10 @@ export const sessionCookie = (value: string, age = 3600) =>
 export const MCP_TOKEN_PREFIX = "tbm_";
 
 export async function authorize(r: Request, e: Env): Promise<Principal> {
-  const token = r.headers.get("Authorization")?.match(/^Bearer (.+)$/)?.[1];
-  if (token) {
+  const authorization = r.headers.get("Authorization");
+  if (authorization !== null) {
+    const token = authorization.match(/^Bearer +(\S+)$/i)?.[1];
+    if (!token) throw new AppError("unauthorized", 401);
     if (e.ADMIN_TOKEN && (await equal(token, e.ADMIN_TOKEN)))
       return { role: "operator", account: "" };
     if (e.MCP_TOKEN && (await equal(token, e.MCP_TOKEN)))

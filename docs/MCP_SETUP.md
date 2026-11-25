@@ -2,7 +2,7 @@
 
 ## Hosted endpoint
 
-The Worker serves MCP over Streamable HTTP at `https://<your domain>/mcp`. Point any client that supports remote MCP servers at that URL with the header `Authorization: Bearer <MCP_TOKEN>`. No local process or tunnel is needed. The endpoint accepts only a bearer credential, never the dashboard cookie. Every tool call runs in-process with the read-only MCP credential, so the admin token is never used for tool calls even if a client presents it. Each `/mcp` request counts once toward the 60-requests-per-minute limit.
+The Worker serves MCP over Streamable HTTP at `https://<your domain>/mcp`. Point any client that supports remote MCP servers at that URL with the header `Authorization: Bearer <MCP_TOKEN>`. No local process or tunnel is needed. The endpoint accepts a bearer credential, never the dashboard cookie. Every tool call runs in-process with the caller's [MCP scope](HTTP_API.md#credential-scopes), even if the caller presents the operator bearer. This scope permits vehicle reads and three planner writes, not vehicle commands or account settings. Each `/mcp` request counts once toward the shared 120-requests-per-minute account limit.
 
 ## Local stdio
 
@@ -30,7 +30,7 @@ Generic Claude Desktop / MCP-client configuration (placeholders are intentional;
       ],
       "env": {
         "TESLABOT_URL": "https://tesla.example.com",
-        "TESLABOT_MCP_TOKEN": "<read-only backend credential>"
+        "TESLABOT_MCP_TOKEN": "<MCP bearer credential>"
       }
     }
   }
