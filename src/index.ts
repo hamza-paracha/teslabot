@@ -59,6 +59,8 @@ export async function route(
     throw new AppError("invalid_service_origin", 403);
   if (p === "/admin/session" && r.method === "POST") {
     sameOrigin(r, e);
+    if (!r.headers.has("Authorization"))
+      throw new AppError("unauthorized", 401);
     await rateLimit(e);
     if (
       r.headers.get("Content-Length") &&
@@ -119,7 +121,7 @@ export async function route(
   throw new AppError("not_found", 404);
 }
 // Hosted Streamable HTTP MCP. Requires a bearer credential (never a browser
-// cookie). Tool calls are served in-process as a read-only principal for the
+// cookie). Tool calls are served in-process as a reader principal for the
 // caller's own account, whatever credential opened the session.
 async function mcp(
   r: Request,
