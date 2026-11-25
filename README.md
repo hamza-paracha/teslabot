@@ -19,7 +19,7 @@ Terminal excerpt from a **synthetic** run: one saved trip through MCP, then a se
      upstream   2 Tesla request(s): 1 vehicle_data, 1 vehicle state, 0 wake/command
      answer     within_reserve: leave with 71% → Office 51.2% → Return to Home 31.4%
   Phase: Asleep
-     reading    observed 2026-11-24T23:54:34.006Z (3 h old) · cache_hit=true · stale=true · refresh_error=vehicle_asleep
+     reading    observed 2026-11-25T00:02:37.347Z (3 h old) · cache_hit=true · stale=true · refresh_error=vehicle_asleep
      upstream   1 Tesla request(s): 0 vehicle_data, 1 vehicle state, 0 wake/command
      answer     withheld (insufficient_fresh_data)
   Phase: Recovered
