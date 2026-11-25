@@ -12,22 +12,24 @@ npm run demo
 
 **Proof:** [Telemetry replay](docs/VERIFICATION.md#without-a-tesla) · [Benchmarks](docs/BENCHMARKS.md) · [Demo tests](tests/demo.test.ts)
 
-Terminal excerpt from a **synthetic** run: one saved trip through the real MCP tool and local D1. No Tesla, credentials, or real location required.
+Terminal excerpt from a **synthetic** run: one saved trip through MCP, then a separate telemetry batch with an injected local D1 write failure. No Tesla, credentials, or real location required.
 
 ```text
   Phase: Healthy
      upstream   2 Tesla request(s): 1 vehicle_data, 1 vehicle state, 0 wake/command
      answer     within_reserve: leave with 71% → Office 51.2% → Return to Home 31.4%
   Phase: Asleep
-     reading    observed 2026-11-24T23:49:15.603Z (3 h old) · cache_hit=true · stale=true · refresh_error=vehicle_asleep
+     reading    observed 2026-11-25T00:02:37.347Z (3 h old) · cache_hit=true · stale=true · refresh_error=vehicle_asleep
      upstream   1 Tesla request(s): 0 vehicle_data, 1 vehicle state, 0 wake/command
      answer     withheld (insufficient_fresh_data)
   Phase: Recovered
      upstream   2 Tesla request(s): 1 vehicle_data, 1 vehicle state, 0 wake/command
      answer     within_reserve: leave with 69% → Office 49.8% → Return to Home 30.5%
+  Phase: Telemetry write failure and retry
+     ingest     HTTP 503 · committed 1 record(s) · failed accounts: 1 · driver battery: not stored
+     redeliver  same Idempotency-Key → HTTP 200 · committed 1 record(s) · driver battery: 63%
+     verify     healthy account unchanged: true (battery 64%) · Tesla requests: 0
 ```
-
-The injected telemetry write-failure and retry proof lands separately with the relay acknowledgment PR.
 
 ## What you can ask
 

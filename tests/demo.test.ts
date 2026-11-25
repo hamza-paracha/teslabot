@@ -1,7 +1,25 @@
 import { describe, it, expect } from "vitest";
 import { runScenario } from "../scripts/lib/demo";
+import { runTelemetryRetry } from "../scripts/lib/demo-telemetry";
 
 describe("round-trip demo (npm run demo)", () => {
+  it("shows partial telemetry commit and recovers by redelivering the same batch", async () => {
+    expect(await runTelemetryRetry()).toMatchObject({
+      first: {
+        status: 503,
+        counts: { applied: 1, ignored: 0, failed_accounts: 1 },
+        driverBattery: null,
+      },
+      retry: {
+        status: 200,
+        counts: { applied: 1, ignored: 1, failed_accounts: 0 },
+        driverBattery: 63,
+      },
+      healthyBattery: 64,
+      healthyUnchanged: true,
+      teslaRequests: 0,
+    });
+  });
   it("withholds a saved trip estimate while the car sleeps and resumes on recovery", async () => {
     const steps = await runScenario("timeline");
     expect(
