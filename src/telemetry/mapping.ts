@@ -188,6 +188,9 @@ export function applyTelemetry(
   const time = dated === null ? null : Date.parse(dated);
   const touched = new Set<string>();
   const before = { ...clock.signals };
+  const hadPower = ["ACChargingPower", "DCChargingPower", "power_kw"].some(
+    (signal) => signal in before,
+  );
   let powerUpdated = false;
   let key = "";
   const set = (section: string, apply: () => void) => {
@@ -199,7 +202,7 @@ export function applyTelemetry(
     );
     if (
       time === null
-        ? priorKey in before || last.length
+        ? priorKey in before || last.length || (isPower && hadPower)
         : last.some((value) => Date.parse(value) >= time)
     )
       return;
@@ -382,7 +385,10 @@ export function applyTelemetry(
     }
   }
   if (powerUpdated) {
-    const { ac, dc } = clock.power!;
+    const acDated = clock.signals.ACChargingPower != null;
+    const dcDated = clock.signals.DCChargingPower != null;
+    const ac = dcDated && !acDated ? undefined : clock.power!.ac;
+    const dc = acDated && !dcDated ? undefined : clock.power!.dc;
     base.charging.power_kw =
       dc !== undefined && dc > 0 ? dc : (ac ?? dc ?? null);
   }

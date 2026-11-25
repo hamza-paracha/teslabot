@@ -317,6 +317,23 @@ describe("telemetry ordering of shared and undated values", () => {
       ).toBe(7.4);
     },
   );
+  it("uses undated charging power only until there is a dated reading", () => {
+    const undated = payload(undefined, {
+      DCChargingPower: { doubleValue: 150 },
+    });
+    const dated = payload(at(-5000), { ACChargingPower: { doubleValue: 7.4 } });
+
+    const undatedFirst = emptyClock();
+    const provisional = apply(null, undated, undatedFirst);
+    expect(provisional.charging.power_kw).toBe(150);
+    expect(provisional.data.sections.charging.observed_at).toBeNull();
+    expect(apply(provisional, dated, undatedFirst).charging.power_kw).toBe(7.4);
+
+    const datedFirst = emptyClock();
+    const known = apply(null, dated, datedFirst);
+    expect(apply(known, undated, datedFirst)).toBe(known);
+    expect(known.charging.power_kw).toBe(7.4);
+  });
   it("never lets a retried undated record replace a timestamped reading", () => {
     const clock = emptyClock();
     const undated = payload(undefined, { BatteryLevel: { doubleValue: 30 } });
