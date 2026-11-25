@@ -71,14 +71,18 @@ const pairingUrl = (e: Env) =>
 const vinHash = (vin: string) => hash("vin:" + vin);
 
 // Remove the configuration from the car and stop accepting its records.
+// Tesla is told even when no mapping row exists: an enable can configure the
+// car and then lose its lease before saving the mapping. Without a Tesla token
+// nothing could have configured it.
 export async function disableTelemetry(e: Env, store: Store) {
-  const selected = await store.get<{ id: string; vin: string }>("selected");
+  const stored = await store.getMany(["selected", "owner_tokens"]);
+  const selected: { id: string; vin: string } | null = stored.selected;
   const mapped = await e.DB.prepare(
     "SELECT vin_hash FROM telemetry_vehicles WHERE account=?",
   )
     .bind(store.account)
     .first();
-  if (!mapped) return false;
+  if (!mapped && !(selected && stored.owner_tokens)) return false;
   try {
     if (selected)
       await new TeslaClient(store).request(
@@ -93,7 +97,7 @@ export async function disableTelemetry(e: Env, store: Store) {
       store.deleteKeys(["telemetry_state"]),
     ]);
   }
-  return true;
+  return !!mapped;
 }
 
 export async function telemetryRoute(
