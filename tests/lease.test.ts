@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { Store } from "../src/storage/database";
+import { ownerToken } from "../src/tesla/auth";
 import { e } from "./helpers/app";
 
 // Each request builds its own Store, so two holders are two Store instances.
@@ -60,22 +61,53 @@ describe("lock leases", () => {
     expect(await first.get("summary")).toBe("written by the next holder");
   });
 
-  it("guards writes inside a nested lock by the inner lease", async () => {
+  it("rejects writes inside a nested lock once the outer lease is lost", async () => {
+    // Reconnecting writes under "vehicle" and "account" together and clears
+    // vehicle data, so losing either lease must stop it.
     const first = new Store(e),
       next = new Store(e);
+    await next.put("preferences", "saved before the takeover");
+    await first.locked("vehicle", async () => {
+      await expire("vehicle");
+      await next.locked("vehicle", () =>
+        next.put("preferences", "saved by the next holder"),
+      );
+      await expect(
+        first.locked("account", () =>
+          first.putMany({}, [first.deleteKeys(["preferences"])]),
+        ),
+      ).rejects.toMatchObject({ code: "lease_lost" });
+    });
+    expect(await first.get("preferences")).toBe("saved by the next holder");
+  });
+
+  it("saves a rotated Tesla token even after the caller's vehicle lease is lost", async () => {
+    const first = new Store(e),
+      next = new Store(e);
+    await first.put("owner_tokens", {
+      access_token: "old",
+      refresh_token: "spent-by-tesla",
+      expires_at: 0,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          access_token: "new",
+          refresh_token: "rotated",
+          expires_in: 3600,
+        }),
+      ),
+    );
     await first.locked("vehicle", async () => {
       await expire("vehicle");
       await next.locked("vehicle", async () => {});
-      // A token refresh inside the account lock must still be saved.
-      await first.locked("account", () =>
-        first.put("owner_tokens", "rotated token"),
-      );
-      await expect(
-        first.put("summary", "stale write from the expired holder"),
-      ).rejects.toMatchObject({ code: "lease_lost" });
+      expect((await ownerToken(first)).refresh_token).toBe("rotated");
     });
-    expect(await first.get("owner_tokens")).toBe("rotated token");
-    expect(await first.get("summary")).toBeNull();
+    expect(
+      (await first.get<{ refresh_token: string }>("owner_tokens"))
+        ?.refresh_token,
+    ).toBe("rotated");
   });
 
   it("still writes when the lease expired but nobody took it over", async () => {

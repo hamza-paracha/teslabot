@@ -10,9 +10,8 @@ export const accountPrefix = (account: string) =>
   account ? `acct:${account}:` : "";
 export class Store {
   readonly prefix: string;
-  // Leases this Store holds, innermost last. Writes check that the innermost
-  // one is still held (see putMany): a nested lock such as "account" inside
-  // "vehicle" guards the writes made inside it.
+  // Leases this Store holds. Writes check that every one is still held (see
+  // putMany), so a write made under nested locks needs all of them.
   private leases: { name: string; owner: string }[] = [];
   constructor(
     public env: Env,
@@ -69,13 +68,13 @@ export class Store {
       ),
     );
     if (!statements.length && !extraStatements.length) return;
-    const lease = this.leases.at(-1);
-    const fence = lease ? [this.leaseCheck(lease)] : [];
+    const leases = [...this.leases];
+    const fence = leases.map((lease) => this.leaseCheck(lease));
     try {
       await this.env.DB.batch([...fence, ...statements, ...extraStatements]);
     } catch (error) {
-      if (lease && !(await this.holds(lease)))
-        throw new AppError("lease_lost", 409);
+      for (const lease of leases)
+        if (!(await this.holds(lease))) throw new AppError("lease_lost", 409);
       throw error;
     }
   }

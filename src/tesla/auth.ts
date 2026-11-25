@@ -116,8 +116,12 @@ export async function ownerToken(store: Store): Promise<Tokens> {
   let t = await store.get<Tokens>("owner_tokens");
   if (!t) throw new AppError("tesla_not_connected", 409);
   if (t.expires_at > Date.now() + 60000) return t;
-  return store.locked("account", async () => {
-    t = await store.get<Tokens>("owner_tokens");
+  // A fresh Store holds none of the caller's locks, so the rotated token is
+  // fenced by the account lock alone: Tesla has already spent the old refresh
+  // token, and losing an outer vehicle lease must not drop the new one.
+  const account = store.forAccount(store.account);
+  return account.locked("account", async () => {
+    t = await account.get<Tokens>("owner_tokens");
     if (!t) throw new AppError("tesla_not_connected", 409);
     if (t.expires_at > Date.now() + 60000) return t;
     if (!t.refresh_token) throw new AppError("reauthorization_required", 401);
@@ -129,8 +133,8 @@ export async function ownerToken(store: Store): Promise<Tokens> {
     if (!updated.refresh_token)
       throw new AppError("missing_rotated_refresh_token", 502);
     updated.scope ??= t.scope;
-    await store.put("owner_tokens", updated);
-    await store.audit("token_refreshed");
+    await account.put("owner_tokens", updated);
+    await account.audit("token_refreshed");
     return updated;
   });
 }
