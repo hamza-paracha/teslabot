@@ -63,6 +63,8 @@ Agent → MCP server → Cloudflare Worker → Tesla Fleet API
 
 The agent supplies calendar, weather and route context. teslabot supplies the car data. Readings are cached to avoid unnecessary requests, and it doesn't automatically wake the car. Tesla API usage can cost money.
 
+See the [10-minute code walkthrough](docs/WALKTHROUGH.md) and [architecture decision records](docs/adr/README.md).
+
 ## Running it
 
 You'll need Node.js 22+. The full setup also uses Python 3 and OpenSSL.
