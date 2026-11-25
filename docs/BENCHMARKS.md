@@ -8,6 +8,8 @@ npm run bench -- --rounds 50 --concurrency 1,10,50 --upstream-ms 250
 npm run bench -- --json --out bench.json
 ```
 
+GitHub Actions attaches the JSON report as `teslabot-benchmark` under **Artifacts** on the Checks run, including when the benchmark reports an invariant failure. Latency is reported, not used as a pass/fail threshold.
+
 ## What runs
 
 Each burst fires _c_ parallel section reads (`/api/vehicle/battery`, `climate`, `charging`, `tires`, `closures`) through the real routes, vehicle cache, D1 leases and request budget. Reads go in-process, as hosted `/mcp` tool calls do, so the per-minute HTTP rate limit is not part of the measurement. Storage is a local Miniflare D1. Tesla is a synthetic upstream that adds a fixed latency to every request (100 ms by default).

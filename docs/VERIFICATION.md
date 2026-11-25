@@ -12,6 +12,8 @@ npm run plugin:build
 
 The check command runs formatting, TypeScript, Vitest and a Worker dry-run build. It makes no live Tesla requests.
 
+GitHub Actions also runs `npm run smoke:workerd` against a local Worker with fresh D1 storage. It checks health, hosted MCP authorization and a tool call, and a cron event without Tesla credentials. A separate CI job runs the Python telemetry relay suite.
+
 The integrated `account-to-agent workflow` test in `tests/workflow.test.ts` uses real application route handlers, a local Cloudflare D1 database, application encryption and an official MCP client/server transport. Shared fixtures and database lifecycle live in `tests/helpers/app.ts`; endpoint tests remain in `tests/integration.test.ts`. Only Tesla's network responses are mocked. The workflow checks:
 
 1. Authorization URL requests a fresh login; state and a browser-bound cookie come from the real login route.
