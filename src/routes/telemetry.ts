@@ -86,8 +86,10 @@ export async function disableTelemetry(e: Env, store: Store) {
   // A car mapped to another account is that account's to disable.
   if (
     !mapped &&
-    (await e.DB.prepare("SELECT 1 FROM telemetry_vehicles WHERE vin_hash=?")
-      .bind(await vinHash(selected!.vin))
+    (await e.DB.prepare(
+      "SELECT 1 FROM telemetry_vehicles WHERE vin_hash=? AND account<>?",
+    )
+      .bind(await vinHash(selected!.vin), store.account)
       .first())
   )
     return false;
