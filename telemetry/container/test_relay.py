@@ -11,7 +11,9 @@ import time
 import unittest
 import urllib.error
 import urllib.request
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(__file__))
 import relay  # noqa: E402
@@ -101,10 +103,40 @@ class ForwarderTest(unittest.TestCase):
         forwarder.add("tesla_V", b'{"vin": "A"}')
         self.assertTrue(wait_for(lambda: len(self.handler.received) == 2))
         self.assertEqual(relay_delay[:1], [1.0])
+        first_id = self.handler.received[0][1]["Idempotency-Key"]
+        self.assertEqual(uuid.UUID(first_id).version, 4)
+        self.assertEqual(self.handler.received[1][1]["Idempotency-Key"], first_id)
+        self.assertEqual(self.handler.received[0][2], self.handler.received[1][2])
         forwarder.add("tesla_V", b'{"vin": "B"}')
         self.assertTrue(wait_for(lambda: len(self.handler.received) == 3))
+        self.assertTrue(wait_for(lambda: forwarder.dropped == 1))
+        self.assertNotEqual(self.handler.received[2][1]["Idempotency-Key"], first_id)
         time.sleep(0.2)
         self.assertEqual(len(self.handler.received), 3)
+
+    def test_retries_network_failures_and_rate_limits_with_capped_backoff(self):
+        attempts, delays = [], []
+
+        def opener(request, timeout):
+            attempts.append(request)
+            if len(attempts) == 1:
+                raise urllib.error.HTTPError(self.url, 429, "rate limited", {}, None)
+            raise urllib.error.URLError("connection failed")
+
+        def wait(seconds):
+            delays.append(seconds)
+            if len(delays) == 8:
+                self.stop.set()
+
+        forwarder = relay.Forwarder(self.url, "t", opener=opener)
+        forwarder.add("tesla_V", b'{"vin": "A"}')
+        self.stop.wait = wait
+        with patch.object(relay, "BATCH_SIZE", 1):
+            forwarder.run(self.stop)
+        self.assertEqual(delays, [1, 2, 4, 8, 16, 32, 60, 60])
+        self.assertEqual(len({request.get_header("Idempotency-key") for request in attempts}), 1)
+        self.assertEqual(len({request.data for request in attempts}), 1)
+        self.assertEqual(forwarder.dropped, 0)
 
     def test_ignores_malformed_records_and_drops_oldest_when_full(self):
         forwarder = relay.Forwarder(self.url, "t")

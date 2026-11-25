@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { applyTelemetry, emptyClock } from "../src/telemetry/mapping";
 import { normalize } from "../src/tesla/normalization";
 import { hash } from "../src/security/crypto";
+import { Store } from "../src/storage/database";
 import { e, store, vin, tokens, req } from "./helpers/app";
 
 const id = "a".repeat(24);
@@ -433,6 +434,134 @@ describe("telemetry routes", () => {
         )
       ).status,
     ).toBe(403);
+  });
+  it("acknowledges only committed writes and skips healthy accounts on retry", async () => {
+    configure();
+    const driver = store.forAccount("driver");
+    const driverVin = "5YJ3E1EA7KF000002";
+    const driverId = "b".repeat(24);
+    await e.DB.prepare("INSERT INTO accounts(id, label, created) VALUES(?,?,?)")
+      .bind(driver.account, "driver", Date.now())
+      .run();
+    const telemetryState = {
+      enabled_at: at(),
+      expires_at: at(86400000),
+      connected: null,
+      last_record_at: null,
+      rotated_at: null,
+    };
+    for (const [account, carVin, carId] of [
+      [store, vin, id],
+      [driver, driverVin, driverId],
+    ] as const) {
+      await account.putMany({
+        selected: { id: carId, vin: carVin },
+        telemetry_state: telemetryState,
+        preferences: { history_enabled: true },
+      });
+      await e.DB.prepare(
+        "INSERT INTO telemetry_vehicles(vin_hash,account,vehicle_id,created) VALUES(?,?,?,?)",
+      )
+        .bind(await hash("vin:" + carVin), account.account, carId, Date.now())
+        .run();
+    }
+    const observed = at();
+    const batch = {
+      records: [vin, driverVin].map((carVin, index) => ({
+        topic: "tesla_V",
+        payload: {
+          vin: carVin,
+          createdAt: observed,
+          data: [{ key: "BatteryLevel", value: { doubleValue: 64 - index } }],
+        },
+      })),
+    };
+    const request = json(batch, ingestToken);
+    const send = (batchId: string) =>
+      req(
+        "/telemetry/ingest",
+        {
+          ...request,
+          headers: { ...request.headers, "Idempotency-Key": batchId },
+        },
+        false,
+      );
+    const batchId = "3baef76f-2ae1-493f-a27a-7f790636dc7d";
+    const putMany = Store.prototype.putMany;
+    const writes = vi
+      .spyOn(Store.prototype, "putMany")
+      .mockImplementation(function (this: Store, ...args) {
+        if (this.account === driver.account)
+          return Promise.reject(Error("injected storage failure"));
+        return putMany.apply(this, args);
+      });
+    try {
+      const first = await send(batchId);
+      expect(first.status).toBe(503);
+      expect(await first.json()).toEqual({
+        received: 2,
+        applied: 1,
+        ignored: 0,
+        unknown_vehicles: 0,
+        failed_accounts: 1,
+      });
+      expect(await store.get("summary")).toMatchObject({
+        battery: { percentage: 64 },
+      });
+      expect(await driver.get("summary")).toBeNull();
+    } finally {
+      writes.mockRestore();
+    }
+    const keys = [
+      "summary",
+      "telemetry_state",
+      "previous_summary",
+      "observation_history",
+    ] as const;
+    const firstState = await store.getMany(keys);
+    const later = Date.now() + 31 * 60000;
+    const now = vi.spyOn(Date, "now").mockReturnValue(later);
+    try {
+      const retry = await send(batchId);
+      expect(retry.status).toBe(200);
+      expect(await retry.json()).toMatchObject({
+        applied: 1,
+        ignored: 1,
+        failed_accounts: 0,
+      });
+      expect(await driver.get("summary")).toMatchObject({
+        battery: { percentage: 63 },
+      });
+      expect(await store.getMany(keys)).toEqual(firstState);
+
+      const duplicate = await send("c39a8f1a-6b17-4dd3-bb9b-c41e789763ce");
+      expect(duplicate.status).toBe(200);
+      expect(await duplicate.json()).toMatchObject({ applied: 0, ignored: 2 });
+      expect(await store.getMany(keys)).toEqual({
+        ...firstState,
+        telemetry_state: {
+          ...firstState.telemetry_state,
+          last_batch_id: "c39a8f1a-6b17-4dd3-bb9b-c41e789763ce",
+        },
+      });
+    } finally {
+      now.mockRestore();
+    }
+  });
+  it("rejects malformed signal batches instead of retrying them", async () => {
+    configure();
+    const response = await req(
+      "/telemetry/ingest",
+      json(
+        { records: [{ topic: "tesla_V", payload: { vin, data: [null] } }] },
+        ingestToken,
+      ),
+      false,
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: { code: "invalid_telemetry_batch" },
+    });
   });
   it("removes the configuration from the car on disable", async () => {
     configure();
