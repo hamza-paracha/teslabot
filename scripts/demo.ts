@@ -1,6 +1,6 @@
 // "Can I make the round trip?" without a Tesla, an account or a location.
 //
-//   npm run demo                        healthy → asleep → recovered
+//   npm run demo                        healthy → asleep → recovered, plus telemetry retry
 //   npm run demo -- --scenario fresh    car online, reading taken now
 //   npm run demo -- --scenario asleep   car asleep, last reading 3 hours old
 //   npm run demo -- --json              raw tool responses
@@ -9,6 +9,7 @@
 // local D1 database and a synthetic Tesla upstream. Distances are sample values.
 import { parseArgs } from "node:util";
 import { runScenario, scenarios, type Scenario, type Step } from "./lib/demo";
+import { runTelemetryRetry } from "./lib/demo-telemetry";
 
 const { values } = parseArgs({
   options: {
@@ -75,10 +76,30 @@ function print({
   console.log(`     latency    ${latency_ms} ms (local, synthetic upstream)`);
 }
 
-const output: Record<string, Step[]> = {};
+const output: Record<
+  string,
+  Step[] | Awaited<ReturnType<typeof runTelemetryRetry>>
+> = {};
 for (const name of selected) {
   if (!values.json) console.log(`\nScenario: ${name}\n  ${scenarios[name]}`);
   output[name] = await runScenario(name, values.json ? undefined : print);
+}
+if (selected.includes("timeline")) {
+  const result = await runTelemetryRetry();
+  output.telemetry_retry = result;
+  if (!values.json) {
+    const { first, retry } = result;
+    console.log("\n  Phase: Telemetry write failure and retry");
+    console.log(
+      `     ingest     HTTP ${first.status} · committed ${first.counts.applied} record(s) · failed accounts: ${first.counts.failed_accounts} · driver battery: ${first.driverBattery ?? "not stored"}`,
+    );
+    console.log(
+      `     redeliver  same Idempotency-Key → HTTP ${retry.status} · committed ${retry.counts.applied} record(s) · driver battery: ${retry.driverBattery}%`,
+    );
+    console.log(
+      `     verify     healthy account unchanged: ${result.healthyUnchanged} (battery ${result.healthyBattery}%) · Tesla requests: ${result.teslaRequests}`,
+    );
+  }
 }
 console.log(
   values.json
