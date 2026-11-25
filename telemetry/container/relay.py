@@ -21,6 +21,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ZMQ_ADDR = os.environ.get("ZMQ_ADDR", "tcp://127.0.0.1:5284")
@@ -132,13 +133,14 @@ class Forwarder:
                 except queue.Empty:
                     pass
 
-    def post(self, batch):
+    def post(self, batch, batch_id):
         request = urllib.request.Request(
             self.url,
             data=json.dumps({"records": batch}).encode(),
             headers={
                 "Authorization": "Bearer " + self.token,
                 "Content-Type": "application/json",
+                "Idempotency-Key": batch_id,
             },
             method="POST",
         )
@@ -146,7 +148,6 @@ class Forwarder:
             return response.status
 
     def run(self, stop):
-        delay = 1.0
         while not stop.is_set():
             batch, deadline = [], time.monotonic() + BATCH_SECONDS
             while len(batch) < BATCH_SIZE:
@@ -159,14 +160,16 @@ class Forwarder:
                     break
             if not batch:
                 continue
+            batch_id = str(uuid.uuid4())
+            delay = 1.0
             while not stop.is_set():
                 try:
-                    self.post(batch)
-                    delay = 1.0
+                    self.post(batch, batch_id)
                     break
                 except urllib.error.HTTPError as error:
                     # A rejected batch will not succeed on retry; drop it.
                     if 400 <= error.code < 500 and error.code != 429:
+                        self.dropped += len(batch)
                         log("ingest_rejected", status=error.code, records=len(batch))
                         break
                     log("ingest_retry", status=error.code)
