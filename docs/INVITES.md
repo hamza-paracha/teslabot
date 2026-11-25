@@ -13,7 +13,9 @@ teslabot is invite-only. The installation operator (whoever holds `ADMIN_TOKEN`)
 2. Send the link. It is shown once, and only its hash is stored. It works once.
 3. When they accept, they sign in to Tesla, approve Vehicle Information, and land on their own dashboard. There they select their car, set alerts and create assistant credentials.
 
-An invite can be revoked until it is used. The **Drivers** list shows each account, whether its Tesla connection is active, and whether live data is on. **Disable** ends the driver's sessions and blocks their credentials and alerts immediately. **Delete** removes everything stored for the account, and turns off its car's telemetry configuration first. Drivers can delete their own account from the Connection section.
+An invite can be revoked until it is used. The invite is marked used only when the new account and its encrypted Tesla grant are both saved. If the save fails, the driver can start again from the same invite while it remains valid. Signing in to an already-linked Tesla account does not spend another invite.
+
+The **Drivers** list shows each account, whether its Tesla connection is active, and whether live data is on. **Disable** ends the driver's sessions and blocks their credentials and alerts immediately. **Delete** removes everything stored for the account, and turns off its car's telemetry configuration first. Drivers can delete their own account from the Connection section.
 
 ## Assistants
 
