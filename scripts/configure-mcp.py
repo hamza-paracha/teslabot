@@ -38,5 +38,5 @@ with os.fdopen(fd, "w") as stream:
     json.dump(values, stream)
 os.chmod(path, 0o600)
 print(
-    "Private secrets/mcp.json prepared. It contains only the backend origin and read-only MCP credential."
+    "Private secrets/mcp.json prepared. It contains only the backend origin and scoped MCP credential."
 )
