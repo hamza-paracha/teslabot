@@ -16,6 +16,7 @@ jobs:
       - run: npm run check
       - run: npm run plugin:build
       - run: npm run smoke:workerd
+      - run: npm run sandbox
       - name: Run synthetic benchmark
         id: benchmark
         run: npm run bench -- --out "$RUNNER_TEMP/teslabot-benchmark.json"

@@ -135,8 +135,19 @@ async function mcp(
   const reader: Principal = { role: "reader", account: principal.account };
   // Workers rejects redirect "error" in the Request constructor; an in-process
   // call never follows redirects anyway.
-  const fetcher: typeof fetch = async (input, init) =>
-    route(new Request(input, { ...init, redirect: "manual" }), e, ctx, reader);
+  // Errors become the same JSON (code and next steps) an HTTP caller receives.
+  const fetcher: typeof fetch = async (input, init) => {
+    try {
+      return await route(
+        new Request(input, { ...init, redirect: "manual" }),
+        e,
+        ctx,
+        reader,
+      );
+    } catch (error) {
+      return errorResponse(error, e);
+    }
+  };
   // createServer requires a credential-shaped token; in-process calls never
   // check it because the principal is passed directly.
   const handler = createMcpHandler(
@@ -144,6 +155,16 @@ async function mcp(
     { legacy: "stateless", maxRequestBodySize: 65536 },
   );
   return handler.fetch(r);
+}
+function errorResponse(error: unknown, e: Env) {
+  const err =
+    error instanceof AppError ? error : new AppError("internal_error", 500);
+  const response = json(
+    { error: { code: err.code, ...recovery(err.code, e.APP_ORIGIN) } },
+    err.status,
+  );
+  if (err.retryAfter) response.headers.set("Retry-After", err.retryAfter);
+  return response;
 }
 function jsonSession(value: string) {
   const res = json({ authenticated: true });
@@ -163,8 +184,6 @@ export default {
     try {
       response = await route(r, e, ctx);
     } catch (error) {
-      const err =
-        error instanceof AppError ? error : new AppError("internal_error", 500);
       const u = new URL(r.url);
       if (
         [
@@ -175,21 +194,16 @@ export default {
         ].includes(u.pathname) &&
         r.headers.get("Accept")?.includes("text/html")
       ) {
+        const code = error instanceof AppError ? error.code : "internal_error";
         // Remove the authorization code/state from the browser's address bar.
         // Only our stable application code is included in the landing URL.
         response = new Response(null, {
           status: 303,
-          headers: {
-            Location: "/?oauth_error=" + encodeURIComponent(err.code),
-          },
+          headers: { Location: "/?oauth_error=" + encodeURIComponent(code) },
         });
-      } else {
-        response = json(
-          { error: { code: err.code, ...recovery(err.code, e.APP_ORIGIN) } },
-          err.status,
-        );
-      }
-      if (err.retryAfter) response.headers.set("Retry-After", err.retryAfter);
+        if (error instanceof AppError && error.retryAfter)
+          response.headers.set("Retry-After", error.retryAfter);
+      } else response = errorResponse(error, e);
     }
     response = new Response(response.body, response);
     response.headers.set("Cache-Control", "no-store");

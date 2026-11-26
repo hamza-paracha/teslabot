@@ -2,7 +2,9 @@
 const guidance: Record<string, [string, string[]]> = {
   unauthorized: [
     "Your dashboard session has ended or the credential was not accepted.",
-    ["Open the dashboard with your administrator credential, then try again."],
+    [
+      "Sign in on the dashboard with Tesla (or the administrator credential), then try again.",
+    ],
   ],
   tesla_not_connected: [
     "No Tesla owner account is connected. No vehicle reading is available.",

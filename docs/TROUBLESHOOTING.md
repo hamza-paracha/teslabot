@@ -1,7 +1,9 @@
 # Troubleshooting
 
 - service_not_configured: check D1 binding, APP_ORIGIN and generated secret names; never log their values.
-- unauthorized: open an administrator session or provide the appropriate bearer credential. Disconnect invalidates dashboard sessions; reopen the dashboard and enter the administrator credential again before reconnecting.
+- unauthorized: sign in again (Sign in with Tesla, or the administrator credential) or provide the appropriate bearer credential. Disconnect invalidates dashboard sessions.
+- invite_required on Sign in with Tesla: the Tesla account is not linked to any teslabot account. Use the account that shows the car in the Tesla app, which may differ from the developer account. On a new installation, the owner opens Operator access once and connects Tesla; after that, Sign in with Tesla is enough.
+- Tesla reports a wrong password: the sign-in page belongs to Tesla, and teslabot never receives or checks the Tesla password. Confirm the same email and password at tesla.com or in the Tesla app, and reset it with Tesla if needed. The administrator credential under Operator access is a different secret (`ADMIN_TOKEN`), not the Tesla password.
 - disconnect_before_reconnecting: use Reconnect Tesla Account in the dashboard. The current connection remains until the new sign-in succeeds; disconnecting first is unnecessary.
 - read_only_token: MCP token cannot administer accounts or select vehicles.
 - tesla_credentials_missing: Tesla registration/secret upload is pending.

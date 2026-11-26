@@ -1,5 +1,5 @@
 import { freshness, type Observation } from "../context/observations";
-import { normalize } from "../tesla/normalization";
+import { km, normalize } from "../tesla/normalization";
 
 // Signals requested from the car. Values arrive only when they change, at most
 // once per interval; Tesla bills per signal received.
@@ -35,7 +35,6 @@ export const TELEMETRY_FIELDS: Record<string, { interval_seconds: number }> = {
 export const LOCATION_FIELDS = { Location: { interval_seconds: 300 } };
 
 type Value = Record<string, unknown> | null | undefined;
-const MILES = 1.609344;
 
 // fleet-telemetry emits protojson. Fields are typed when prefer_typed is set,
 // but older firmware sends strings, so both forms are accepted.
@@ -233,7 +232,7 @@ export function applyTelemetry(
           (datum.key === "RatedRange" ||
             !(payload.data ?? []).some((d) => d.key === "RatedRange"))
         )
-          set("battery", () => (base.battery.range_km = miles * MILES));
+          set("battery", () => (base.battery.range_km = km(miles)));
         break;
       }
       case "ChargeLimitSoc":
@@ -271,7 +270,7 @@ export function applyTelemetry(
           "charging",
           () =>
             (base.charging.range_added_km_per_hour =
-              rate === null || rate < 0 ? null : rate * MILES),
+              rate === null || rate < 0 ? null : km(rate)),
         );
         break;
       }
@@ -292,8 +291,7 @@ export function applyTelemetry(
         const miles = num(v);
         set(
           "vehicle",
-          () =>
-            (base.vehicle.odometer_km = miles === null ? null : miles * MILES),
+          () => (base.vehicle.odometer_km = miles === null ? null : km(miles)),
         );
         break;
       }

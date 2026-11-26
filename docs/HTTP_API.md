@@ -57,7 +57,7 @@ Additional protected endpoints:
 
 Accounts and live data:
 
-- `GET /auth/signin`, `GET /auth/signup?invite=CODE`: public; start Tesla sign-in for an existing driver or an invite. Unknown Tesla accounts are refused at the callback.
+- `GET /auth/signin`, `GET /auth/signup?invite=CODE`: public; start Tesla sign-in for the owner, an existing driver or an invite. The owner's linked Tesla account gets an operator session. Unknown Tesla accounts are refused at the callback.
 - `POST/GET /admin/invites`, `POST /admin/invites/revoke`, `GET /admin/accounts`, `POST /admin/accounts/disable`, `POST /admin/accounts/delete`: operator only.
 - `GET/POST /account/mcp-tokens`, `POST /account/mcp-tokens/revoke`: the operator's or driver's own MCP credentials. `POST /account/delete`: a driver may delete their own account; the operator account cannot be deleted.
 - `GET /api/telemetry` (`?check=true` asks Tesla), `POST /api/telemetry/enable`, `POST /api/telemetry/disable`: live data for the selected car.

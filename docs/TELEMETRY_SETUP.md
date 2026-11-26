@@ -57,7 +57,7 @@ Code: `telemetry/src/index.ts` (Worker and Durable Object), `telemetry/container
 
 6. **Turn it on per car.** In the dashboard, each driver opens **Live data**, adds the virtual key, then clicks **Turn on live data**. The car adopts the configuration the next time it connects. **Check with Tesla** shows whether it has synced and lists any reported errors.
 
-**Turn off** asks Tesla to remove the configuration for the selected car. If the account has no local mapping, it still asks Tesla when the car is selected and the account has Tesla tokens, unless another account maps that car. This covers an enable that configured Tesla but did not save the local mapping.
+**Turn off** asks Tesla to remove the configuration for the selected car, as do disconnecting, reconnecting and deleting the account. If the account has no local mapping, it still asks Tesla when the car is selected and the account has Tesla tokens, unless another account maps that car. This covers an enable that configured Tesla but did not save the local mapping.
 
 Configurations expire after 90 days; turn live data on again to renew. One VIN can stream to only one teslabot account.
 

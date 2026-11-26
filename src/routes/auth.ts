@@ -18,6 +18,7 @@ import {
 } from "../tesla/auth";
 import { json } from "./http";
 import { clearVehicleData, vehicleAccess } from "../tesla/vehicles";
+import { removeTelemetry } from "./telemetry";
 
 type Purpose = "connect" | "reconnect" | "signup" | "signin";
 const redirect = (path: string, headers: HeadersInit = {}) =>
@@ -143,33 +144,32 @@ export async function oauthCallback(
     role = transaction.role ?? "operator";
     if (linked && linked.id !== account)
       throw new AppError("tesla_account_already_linked", 409);
-    await connect(
-      e,
-      new Store(e, ctx, account),
-      tokens,
-      transaction.purpose,
-      subjectHash,
-    );
+    const store = new Store(e, ctx, account);
+    // The previous grant removes the car's configuration before it is replaced.
+    if (transaction.purpose === "reconnect") await removeTelemetry(e, store);
+    await connect(e, store, tokens, transaction.purpose, subjectHash);
   } else {
     if (!subjectHash) throw new AppError("tesla_identity_unavailable", 502);
+    const known = linked ?? (await linkOwner(e, subject!, subjectHash));
     const inviteHash =
       transaction.purpose === "signup" ? transaction.invite_hash : null;
-    if (!linked && !inviteHash) throw new AppError("invite_required", 403);
+    if (!known && !inviteHash) throw new AppError("invite_required", 403);
     const created =
-      !linked && inviteHash
+      !known && inviteHash
         ? await signUp(e, ctx, inviteHash, subjectHash, tokens)
         : null;
     if (created) {
       account = created;
     } else {
       // A concurrent signup may have linked this identity after the first lookup.
-      const existing = linked ?? (await linkedAccount(e, subjectHash));
+      const existing = known ?? (await linkedAccount(e, subjectHash));
       if (!existing) throw new AppError("invite_invalid", 403);
       if (existing.disabled) throw new AppError("account_disabled", 403);
       account = existing.id;
       await signIn(new Store(e, ctx, account), tokens);
     }
-    role = "user";
+    // The owner account's Tesla identity opens the operator dashboard.
+    role = account === "" ? "operator" : "user";
   }
   const session = await makeSession(e, account, role);
   const response = redirect("/?oauth=connected");
@@ -204,6 +204,26 @@ async function signUp(
   if (!created.meta.changes) return null;
   await store.audit("account_created");
   return account;
+}
+
+// An owner connected before Tesla sign-in existed has no linked identity. The
+// Tesla account already connected to the owner account may claim it: the
+// stored grant's subject must match the one Tesla just returned.
+async function linkOwner(e: Env, subject: string, subjectHash: string) {
+  const owner = await e.DB.prepare(
+    "SELECT tesla_sub_hash, disabled FROM accounts WHERE id=''",
+  ).first<{ tesla_sub_hash: string | null; disabled: number }>();
+  if (!owner || owner.tesla_sub_hash) return null;
+  const stored = await new Store(e).get<Tokens>("owner_tokens");
+  if (!stored || teslaSubject(stored, e) !== subject) return null;
+  const claimed = await e.DB.prepare(
+    "UPDATE accounts SET tesla_sub_hash=? WHERE id='' AND tesla_sub_hash IS NULL",
+  )
+    .bind(subjectHash)
+    .run();
+  if (!claimed.meta.changes) return null;
+  await new Store(e).audit("owner_identity_linked");
+  return { id: "", disabled: owner.disabled };
 }
 
 async function connect(
@@ -325,6 +345,7 @@ export async function authRoute(
     return redirect(url, { "Set-Cookie": browserCookie(browser) });
   }
   if (p === "/auth/disconnect" && r.method === "POST") {
+    await removeTelemetry(e, store);
     await store.locked("vehicle", () =>
       store.locked("account", async () => {
         await e.DB.batch([

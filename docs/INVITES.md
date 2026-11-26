@@ -4,7 +4,7 @@ teslabot is invite-only. The installation operator (whoever holds `ADMIN_TOKEN`)
 
 ## Accounts
 
-- **Operator.** Signs in with the administrator credential under "Operator access" on the dashboard. The operator's own car is the original single-owner account. Its data is unchanged by the upgrade, and it keeps working with the installation `MCP_TOKEN`. Only the operator can create invites, register the partner application, and disable or delete driver accounts.
+- **Operator.** Signs in with Tesla, using the Tesla account connected to the owner account, or with the administrator credential under "Operator access". The administrator credential is needed only once, to connect the owner's Tesla account on a new installation; an owner connected before Tesla sign-in existed is linked automatically the first time they sign in with that same Tesla account. The operator's own car is the original single-owner account. Its data is unchanged by the upgrade, and it keeps working with the installation `MCP_TOKEN`. Only the operator can create invites, register the partner application, and disable or delete driver accounts.
 - **Drivers.** Join from an invite link with "Accept with Tesla", and return later with "Sign in with Tesla". The Tesla account is the login. teslabot stores a hash of Tesla's account identifier, never the identifier itself or the ID token. Signing in with a Tesla account that has no invite is refused, and nothing is stored.
 
 ## Inviting someone
@@ -15,7 +15,7 @@ teslabot is invite-only. The installation operator (whoever holds `ADMIN_TOKEN`)
 
 An invite can be revoked until it is used. The invite is marked used only when the new account and its encrypted Tesla grant are both saved. If the save fails, the driver can start again from the same invite while it remains valid. Signing in to an already-linked Tesla account does not spend another invite.
 
-The **Drivers** list shows each account, whether its Tesla connection is active, and whether live data is on. **Disable** ends the driver's sessions and blocks their credentials and alerts immediately. **Delete** removes everything stored for the account, and turns off its car's telemetry configuration first. Drivers can delete their own account from the Connection section.
+The **Drivers** list shows each account, whether its Tesla connection is active, and whether live data is on. **Disable** ends the driver's sessions and blocks their credentials and alerts immediately. **Delete** removes everything stored for the account, and turns off its car's telemetry configuration first. Disconnecting or reconnecting a Tesla account also removes its car's telemetry configuration. Drivers can delete their own account from the Connection section.
 
 ## Assistants
 

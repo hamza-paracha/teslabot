@@ -5,7 +5,7 @@ import { Store } from "../storage/database";
 import { hash, random } from "../security/crypto";
 import { MCP_TOKEN_PREFIX, type Principal } from "../security/authorization";
 import { json, readJson } from "./http";
-import { disableTelemetry } from "./telemetry";
+import { removeTelemetry } from "./telemetry";
 
 const MCP_TOKEN_LIMIT = 10;
 const label = z
@@ -34,7 +34,7 @@ export async function deleteAccount(
 ) {
   if (!account) throw new AppError("owner_account_protected", 403);
   const store = new Store(e, ctx, account);
-  await disableTelemetry(e, store).catch(() => undefined);
+  await removeTelemetry(e, store);
   await e.DB.batch([
     store.deleteAll(),
     e.DB.prepare("DELETE FROM sessions WHERE account=?").bind(account),

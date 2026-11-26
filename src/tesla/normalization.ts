@@ -60,6 +60,8 @@ export const dataSchema = z.object({
     .optional(),
   drive_state: z.object({ latitude: n, longitude: n, timestamp: n }).optional(),
 });
+// Miles to kilometres, to the nearest 10 m so readings stay legible.
+export const km = (miles: number) => Math.round(miles * 160.9344) / 100;
 export function normalize(
   raw: unknown,
   id: string,
@@ -156,14 +158,14 @@ export function normalize(
       display_name: name ?? null,
       online: true,
       locked: v?.locked ?? null,
-      odometer_km: v?.odometer == null ? null : v.odometer * 1.609344,
+      odometer_km: v?.odometer == null ? null : km(v.odometer),
       sentry_mode: v?.sentry_mode ?? null,
       software_version: v?.car_version ?? null,
     },
     battery: {
       percentage: c?.battery_level ?? null,
       usable_percentage: c?.usable_battery_level ?? null,
-      range_km: c?.battery_range == null ? null : c.battery_range * 1.609344,
+      range_km: c?.battery_range == null ? null : km(c.battery_range),
     },
     charging: {
       state: c?.charging_state ?? null,
@@ -181,9 +183,7 @@ export function normalize(
           ? c.charge_energy_added
           : null,
       range_added_km_per_hour:
-        c?.charge_rate != null && c.charge_rate >= 0
-          ? c.charge_rate * 1.609344
-          : null,
+        c?.charge_rate != null && c.charge_rate >= 0 ? km(c.charge_rate) : null,
     },
     climate: {
       interior_c: a?.inside_temp ?? null,

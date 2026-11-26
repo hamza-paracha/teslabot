@@ -107,7 +107,7 @@ describe("telemetry mapping", () => {
     );
     expect(result.battery).toMatchObject({
       percentage: 72,
-      range_km: 321.8688,
+      range_km: 321.87,
     });
     expect(result.charging).toMatchObject({
       state: "Charging",
@@ -756,5 +756,83 @@ describe("telemetry routes", () => {
       await e.DB.prepare("SELECT * FROM telemetry_vehicles").first(),
     ).toBeNull();
     expect(await store.get("telemetry_state")).toBeNull();
+  });
+  it("removes the configuration from the car on disconnect and reconnect", async () => {
+    configure();
+    const mapped = async () => {
+      await store.putMany({
+        selected: { id, vin },
+        owner_tokens: tokens(),
+        telemetry_state: {},
+      });
+      await e.DB.prepare(
+        "INSERT INTO telemetry_vehicles(vin_hash,account,vehicle_id,created) VALUES(?,?,?,?)",
+      )
+        .bind(await hash("vin:" + vin), "", id, Date.now())
+        .run();
+    };
+    const removed: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(String(input));
+        if (url.hostname === "fleet-auth.prd.vn.cloud.tesla.com")
+          return Response.json(tokens());
+        if (init?.method === "DELETE") {
+          removed.push(url.pathname);
+          return Response.json({ response: { updated_vehicles: 1 } });
+        }
+        throw Error("unexpected upstream " + url);
+      }),
+    );
+    const config = `/api/1/vehicles/${vin}/fleet_telemetry_config`;
+    await mapped();
+    expect((await req("/auth/disconnect", { method: "POST" })).status).toBe(
+      200,
+    );
+    expect(removed).toEqual([config]);
+    expect(
+      await e.DB.prepare("SELECT * FROM telemetry_vehicles").first(),
+    ).toBeNull();
+    await mapped();
+    const reconnect = await req("/auth/reconnect", { method: "POST" });
+    const state = new URL(
+      ((await reconnect.json()) as any).authorization_url,
+    ).searchParams.get("state");
+    const callback = await req(
+      `/auth/callback?state=${state}&code=fixture`,
+      {
+        headers: { Cookie: reconnect.headers.get("Set-Cookie")!.split(";")[0] },
+      },
+      false,
+    );
+    expect(callback.status).toBe(303);
+    expect(removed).toEqual([config, config]);
+    expect(
+      await e.DB.prepare("SELECT * FROM telemetry_vehicles").first(),
+    ).toBeNull();
+  });
+  it("still disconnects when Tesla cannot remove the configuration", async () => {
+    configure();
+    await store.putMany({
+      selected: { id, vin },
+      owner_tokens: tokens(),
+      telemetry_state: {},
+    });
+    await e.DB.prepare(
+      "INSERT INTO telemetry_vehicles(vin_hash,account,vehicle_id,created) VALUES(?,?,?,?)",
+    )
+      .bind(await hash("vin:" + vin), "", id, Date.now())
+      .run();
+    const upstream = vi.fn(async () => new Response(null, { status: 503 }));
+    vi.stubGlobal("fetch", upstream);
+    expect((await req("/auth/disconnect", { method: "POST" })).status).toBe(
+      200,
+    );
+    expect(upstream).toHaveBeenCalledOnce();
+    expect(await store.get("owner_tokens")).toBeNull();
+    expect(
+      await e.DB.prepare("SELECT * FROM telemetry_vehicles").first(),
+    ).toBeNull();
   });
 });

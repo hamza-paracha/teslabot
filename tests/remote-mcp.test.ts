@@ -5,7 +5,7 @@ import {
 } from "@modelcontextprotocol/client";
 import app from "../src/index";
 import { normalize } from "../src/tesla/normalization";
-import { e, store, origin, vin, fixture, req } from "./helpers/app";
+import { e, store, origin, vin, fixture, tokens, req } from "./helpers/app";
 
 const id = "a".repeat(24);
 const worker: typeof fetch = async (input, init) =>
@@ -69,6 +69,43 @@ describe("hosted MCP endpoint", () => {
       });
       expect((trip.structuredContent as any).assessment).toBe("within_reserve");
       expect(JSON.stringify([snapshot, trip])).not.toContain(vin);
+      expect(tesla).not.toHaveBeenCalled();
+    } finally {
+      await client.close();
+    }
+  });
+  it("returns the backend's error code and next steps, as over HTTP", async () => {
+    const tesla = vi.fn();
+    vi.stubGlobal("fetch", tesla);
+    const client = await connect(e.MCP_TOKEN!);
+    try {
+      const disconnected = await client.callTool({
+        name: "tesla_get_snapshot",
+        arguments: {},
+      });
+      expect(disconnected.isError).toBe(true);
+      expect(disconnected.structuredContent).toMatchObject({
+        error: {
+          code: "tesla_not_connected",
+          next_steps: expect.any(Array),
+          dashboard_url: origin + "/",
+        },
+      });
+      await store.put("owner_tokens", tokens());
+      const unselected = await client.callTool({
+        name: "tesla_get_snapshot",
+        arguments: {},
+      });
+      expect(unselected.structuredContent).toMatchObject({
+        error: { code: "select_vehicle_first", next_steps: expect.any(Array) },
+      });
+      const departures = await client.callTool({
+        name: "tesla_plan_departures",
+        arguments: { events: [] },
+      });
+      expect(departures.structuredContent).toMatchObject({
+        vehicle_data_error: "no_cached_observation",
+      });
       expect(tesla).not.toHaveBeenCalled();
     } finally {
       await client.close();

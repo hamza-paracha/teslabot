@@ -272,6 +272,54 @@ describe("invite-only accounts", () => {
       refresh_token: "refresh-driver",
     });
   });
+  it("signs the owner in with Tesla to the operator dashboard", async () => {
+    // Linked when the owner connected their Tesla account.
+    await e.DB.prepare("UPDATE accounts SET tesla_sub_hash=? WHERE id=''")
+      .bind(await hash("tesla:owner-sub"))
+      .run();
+    teslaAs("owner-sub");
+    const owner = await signIn("/auth/signin");
+    expect(owner).toMatchObject({ status: 303, location: "/?oauth=connected" });
+    const status = (await (
+      await as(owner.session!, "/auth/status")
+    ).json()) as any;
+    expect(status).toMatchObject({ role: "operator", connected: true });
+    expect((await as(owner.session!, "/admin/invites")).status).toBe(200);
+    expect((await store.get<any>("owner_tokens")).refresh_token).toBe(
+      "refresh-owner-sub",
+    );
+  });
+  it("links the owner's Tesla account on first sign-in from its existing connection", async () => {
+    const access = (sub: string) =>
+      `${b64({ alg: "RS256" })}.${b64({ sub, aud: ["fleet"] })}.sig`;
+    // Connected before Tesla sign-in existed, so no identity is linked yet.
+    await store.put("owner_tokens", {
+      ...tokens(),
+      access_token: access("owner-sub"),
+    });
+    teslaAs("someone-else");
+    expect(await signIn("/auth/signin")).toMatchObject({
+      status: 403,
+      error: "invite_required",
+    });
+    expect(
+      await e.DB.prepare(
+        "SELECT tesla_sub_hash FROM accounts WHERE id=''",
+      ).first(),
+    ).toEqual({ tesla_sub_hash: null });
+    teslaAs("owner-sub");
+    const owner = await signIn("/auth/signin");
+    expect(owner.status).toBe(303);
+    const status = (await (
+      await as(owner.session!, "/auth/status")
+    ).json()) as any;
+    expect(status.role).toBe("operator");
+    expect(
+      await e.DB.prepare(
+        "SELECT tesla_sub_hash FROM accounts WHERE id=''",
+      ).first(),
+    ).toEqual({ tesla_sub_hash: await hash("tesla:owner-sub") });
+  });
   it("refuses Tesla sign-in without an account or invite and stores nothing", async () => {
     teslaAs("stranger");
     const result = await signIn("/auth/signin");

@@ -576,7 +576,7 @@ const oauthMessages = {
   invite_invalid:
     "This invite link has expired or was already used. Ask for a new one.",
   invite_required:
-    "That Tesla account isn't registered with teslabot yet. You need an invite link to join.",
+    "That Tesla account isn't linked to teslabot. Use the account that has your car in the Tesla app. New drivers need an invite link. On a new installation, the owner connects Tesla once under Operator access.",
   account_disabled: "This teslabot account has been disabled by the operator.",
   tesla_account_already_linked:
     "That Tesla account is already linked to a different teslabot account.",

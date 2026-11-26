@@ -110,6 +110,24 @@ export async function disableTelemetry(e: Env, store: Store) {
   return !!mapped;
 }
 
+// Disconnecting, reconnecting and deleting an account all remove the car's
+// configuration. Best effort: an unreachable Tesla must not block leaving, and
+// the local mapping is removed regardless, so later records are dropped.
+// Without telemetry in this installation, only a car mapped earlier can have
+// been configured, so no request is spent otherwise.
+export async function removeTelemetry(e: Env, store: Store) {
+  if (
+    !telemetryAvailable(e) &&
+    !(await e.DB.prepare("SELECT 1 FROM telemetry_vehicles WHERE account=?")
+      .bind(store.account)
+      .first())
+  )
+    return false;
+  return store
+    .locked("telemetry", () => disableTelemetry(e, store), 10000)
+    .catch(() => false);
+}
+
 export async function telemetryRoute(
   r: Request,
   e: Env,

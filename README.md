@@ -59,7 +59,7 @@ Agent → MCP server → Cloudflare Worker → Tesla Fleet API
 
 - **TypeScript** for the backend, planning logic and MCP tools.
 - **Cloudflare Workers + D1** for the API and encrypted token storage.
-- **Tesla OAuth** to connect the account without handling a Tesla password, and as the sign-in for invited drivers.
+- **Tesla OAuth** to connect the account without handling a Tesla password, and as the sign-in for the owner and invited drivers.
 - **Cloudflare Containers + Spectrum** for the optional Fleet Telemetry server.
 - **MCP** to keep it usable across different agents: a hosted Streamable HTTP endpoint at `/mcp` on the Worker, plus a local stdio server for compatible clients.
 
